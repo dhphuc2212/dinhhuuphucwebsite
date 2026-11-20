@@ -91,28 +91,31 @@ BẮT BUỘC TRẢ VỀ ĐÚNG ĐỊNH DẠNG JSON THUẦN (không bọc markdow
   }
 }`;
 
-        const geminiResponse = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${env.GEMINI_API_KEY}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              systemInstruction: {
-                parts: [{ text: systemPrompt }]
-              },
-              contents: [
-                {
-                  role: "user",
-                  parts: [{ text: message }]
-                }
-              ],
-              generationConfig: {
-                responseMimeType: "application/json",
-                temperature: 0.4
-              }
-            })
-          }
-        );
+const geminiResponse = await fetch(
+  "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+  {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-goog-api-key": env.GEMINI_API_KEY
+    },
+    body: JSON.stringify({
+      systemInstruction: {
+        parts: [{ text: systemPrompt }]
+      },
+      contents: [
+        {
+          role: "user",
+          parts: [{ text: message }]
+        }
+      ],
+      generationConfig: {
+        responseMimeType: "application/json",
+        temperature: 0.4
+      }
+    })
+  }
+);
 
         const rawResult = await geminiResponse.json();
         const rawText = rawResult?.candidates?.[0]?.content?.parts?.[0]?.text || "";
