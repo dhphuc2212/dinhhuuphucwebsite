@@ -118,6 +118,16 @@ const geminiResponse = await fetch(
 );
 
         const rawResult = await geminiResponse.json();
+        if (!geminiResponse.ok || rawResult?.error) {
+  const apiErr = rawResult?.error?.message || `HTTP ${geminiResponse.status}`;
+  return new Response(
+    JSON.stringify({
+      reply: `Lỗi từ Gemini API: ${apiErr}`,
+      schedule: null
+    }),
+    { status: 200, headers: { "Content-Type": "application/json" } }
+  );
+}
         const rawText = rawResult?.candidates?.[0]?.content?.parts?.[0]?.text || "";
 
         let parsed = {
