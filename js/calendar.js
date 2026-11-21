@@ -3,7 +3,7 @@ window.GoogleCalendarManager = (function () {
   // Tạo OAuth 2.0 Client ID (Web application) trên Google Cloud Console (bật Google Calendar API),
   // khai báo Authorized JavaScript origins là https://dinhhuuphuc.com và https://www.dinhhuuphuc.com,
   // sau đó dán Client ID của bạn vào chuỗi dưới đây:
-  const GOOGLE_CLIENT_ID = "YOUR_GOOGLE_OAUTH_CLIENT_ID.apps.googleusercontent.com";
+  const GOOGLE_CLIENT_ID = "645926964017-6hqgk9jf1umh6qu1tc6vu0ec5c233pta.apps.googleusercontent.com";
   const SCOPES = "https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/userinfo.email";
 
   let tokenClient = null;
