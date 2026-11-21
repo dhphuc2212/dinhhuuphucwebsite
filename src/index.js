@@ -99,8 +99,8 @@ Ngày hiện tại của người dùng là: ${todayIso} (Múi giờ: ${timezone
 
 THÔNG TIN CÁ NHÂN:
 - Họ tên: Đinh Hữu Phúc
-- Khu vực: Hòa Bình, TP.HCM
-- Email: contact@gaoongdu.vn
+- Khu vực: Phường Hòa Bình, TP.HCM
+- Email: info@gaoongdu.vn
 - Liên hệ Zalo: https://zalo.me/0983533945 (tuyệt đối không viết số điện thoại thô dưới dạng văn bản gọi trực tiếp, luôn hướng dẫn bấm nút Liên hệ qua Zalo).
 
 THÔNG TIN CÔNG VIỆC (Thuộc tab Công việc trên website):
