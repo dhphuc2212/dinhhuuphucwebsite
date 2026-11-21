@@ -2,6 +2,54 @@ export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
+    // Endpoint kiểm tra danh sách model khả dụng cho GEMINI_API_KEY
+    if (url.pathname === "/api/models") {
+      if (!env.GEMINI_API_KEY) {
+        return new Response(
+          JSON.stringify({ error: "Chưa cấu hình GEMINI_API_KEY trên Worker." }),
+          {
+            status: 400,
+            headers: {
+              "Content-Type": "application/json",
+              "Access-Control-Allow-Origin": "*"
+            }
+          }
+        );
+      }
+
+      try {
+        const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models", {
+          headers: {
+            "x-goog-api-key": env.GEMINI_API_KEY
+          }
+        });
+        const data = await res.json();
+        const available = (data.models || [])
+          .filter((m) => (m.supportedGenerationMethods || []).includes("generateContent"))
+          .map((m) => ({
+            id: (m.name || "").replace(/^models\//, ""),
+            name: m.name,
+            displayName: m.displayName || m.name
+          }));
+
+        return new Response(
+          JSON.stringify({ count: available.length, models: available }, null, 2),
+          {
+            status: 200,
+            headers: {
+              "Content-Type": "application/json",
+              "Access-Control-Allow-Origin": "*"
+            }
+          }
+        );
+      } catch (err) {
+        return new Response(
+          JSON.stringify({ error: "Không thể lấy danh sách model từ Gemini API." }),
+          { status: 500, headers: { "Content-Type": "application/json" } }
+        );
+      }
+    }
+
     // Endpoint AI Chatbot Gemini (giấu kín GEMINI_API_KEY ở phía Worker)
     if (url.pathname === "/api/chat") {
       if (request.method === "OPTIONS") {
@@ -35,9 +83,6 @@ export default {
           });
         }
 
-        // [BẠN CẦN ĐIỀN TRÊN CLOUDFLARE]:
-        // Vào Cloudflare Dashboard -> Workers & Pages -> dinhhuuphucwebsite -> Settings -> Variables and Secrets
-        // Thêm biến bí mật tên là: GEMINI_API_KEY (chọn Encrypt / Secret) và dán API Key từ Google AI Studio vào.
         if (!env.GEMINI_API_KEY) {
           return new Response(
             JSON.stringify({
@@ -91,43 +136,79 @@ BẮT BUỘC TRẢ VỀ ĐÚNG ĐỊNH DẠNG JSON THUẦN (không bọc markdow
   }
 }`;
 
-const geminiResponse = await fetch(
-  "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent",
-  {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-goog-api-key": env.GEMINI_API_KEY
-    },
-    body: JSON.stringify({
-      systemInstruction: {
-        parts: [{ text: systemPrompt }]
-      },
-      contents: [
-        {
-          role: "user",
-          parts: [{ text: message }]
-        }
-      ],
-      generationConfig: {
-        responseMimeType: "application/json",
-        temperature: 0.4
-      }
-    })
-  }
-);
+        // Ưu tiên dòng Gemini Pro trước, tự động dự phòng sang Flash + retry khi tải cao
+        const modelsToTry = [
+          "gemini-3.8-pro",
+          "gemini-3.5-pro",
+          "gemini-3.8-flash"
+        ];
 
-        const rawResult = await geminiResponse.json();
-        if (!geminiResponse.ok || rawResult?.error) {
-  const apiErr = rawResult?.error?.message || `HTTP ${geminiResponse.status}`;
-  return new Response(
-    JSON.stringify({
-      reply: `Lỗi từ Gemini API: ${apiErr}`,
-      schedule: null
-    }),
-    { status: 200, headers: { "Content-Type": "application/json" } }
-  );
-}
+        let geminiResponse = null;
+        let rawResult = null;
+        let usedModel = modelsToTry[0];
+
+        for (const modelName of modelsToTry) {
+          usedModel = modelName;
+          for (let attempt = 0; attempt < 2; attempt++) {
+            geminiResponse = await fetch(
+              `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent`,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "x-goog-api-key": env.GEMINI_API_KEY
+                },
+                body: JSON.stringify({
+                  systemInstruction: {
+                    parts: [{ text: systemPrompt }]
+                  },
+                  contents: [
+                    {
+                      role: "user",
+                      parts: [{ text: message }]
+                    }
+                  ],
+                  generationConfig: {
+                    responseMimeType: "application/json",
+                    temperature: 0.4
+                  }
+                })
+              }
+            );
+
+            rawResult = await geminiResponse.json();
+            const errMsg = rawResult?.error?.message || "";
+            const isOverloaded =
+              geminiResponse.status === 429 ||
+              geminiResponse.status === 503 ||
+              errMsg.toLowerCase().includes("high demand") ||
+              errMsg.toLowerCase().includes("overloaded");
+
+            if (!isOverloaded) break;
+            await new Promise((r) => setTimeout(r, 1200));
+          }
+
+          const hasError = !geminiResponse?.ok || Boolean(rawResult?.error);
+          if (!hasError) break;
+        }
+
+        if (!geminiResponse?.ok || rawResult?.error) {
+          const apiErr = rawResult?.error?.message || `HTTP ${geminiResponse?.status || 500}`;
+          return new Response(
+            JSON.stringify({
+              reply: `Lỗi từ Gemini API (${usedModel}): ${apiErr}`,
+              schedule: null
+            }),
+            {
+              status: 200,
+              headers: {
+                "Content-Type": "application/json",
+                "Access-Control-Allow-Origin": "*"
+              }
+            }
+          );
+        }
+
         const rawText = rawResult?.candidates?.[0]?.content?.parts?.[0]?.text || "";
 
         let parsed = {
@@ -146,7 +227,8 @@ const geminiResponse = await fetch(
         return new Response(
           JSON.stringify({
             reply: parsed.reply || "Đã ghi nhận!",
-            schedule: parsed.schedule || null
+            schedule: parsed.schedule || null,
+            model: usedModel
           }),
           {
             status: 200,
