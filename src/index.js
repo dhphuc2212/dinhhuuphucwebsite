@@ -19,16 +19,13 @@ export default {
 
       try {
         const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models", {
-          headers: {
-            "x-goog-api-key": env.GEMINI_API_KEY
-          }
+          headers: { "x-goog-api-key": env.GEMINI_API_KEY }
         });
         const data = await res.json();
         const available = (data.models || [])
           .filter((m) => (m.supportedGenerationMethods || []).includes("generateContent"))
           .map((m) => ({
             id: (m.name || "").replace(/^models\//, ""),
-            name: m.name,
             displayName: m.displayName || m.name
           }));
 
@@ -50,7 +47,7 @@ export default {
       }
     }
 
-    // Endpoint AI Chatbot Gemini (giấu kín GEMINI_API_KEY ở phía Worker)
+    // Endpoint AI Chatbot Gemini tối ưu phản hồi nhanh
     if (url.pathname === "/api/chat") {
       if (request.method === "OPTIONS") {
         return new Response(null, {
@@ -99,29 +96,29 @@ Ngày hiện tại của người dùng là: ${todayIso} (Múi giờ: ${timezone
 
 THÔNG TIN CÁ NHÂN:
 - Họ tên: Đinh Hữu Phúc
-- Khu vực: Phường Hòa Bình, TP.HCM
-- Email: info@gaoongdu.vn
+- Khu vực: Hòa Bình, TP.HCM
+- Email: contact@gaoongdu.vn
 - Liên hệ Zalo: https://zalo.me/0983533945 (tuyệt đối không viết số điện thoại thô dưới dạng văn bản gọi trực tiếp, luôn hướng dẫn bấm nút Liên hệ qua Zalo).
 
 THÔNG TIN CÔNG VIỆC (Thuộc tab Công việc trên website):
 - Thương hiệu: Gạo Ông Du (website: gaoongdu.vn)
 - Đơn vị chủ quản: Công ty CP Nông nghiệp Gạo Hữu cơ TD Sóc Trăng
 - Bảng giá sản phẩm hiện hành (Đơn giá bán NTD):
-  1. GẠO ST25 "HỮU CƠ" 1KG (Trọng lượng đóng gói: 1 KG) — 72,000
-  2. GẠO ST25 "HỮU CƠ" 5KG (Trọng lượng đóng gói: 5 KG) — 360,000
-  3. GẠO ST25 "TD XANH" 1KG (Trọng lượng đóng gói: 1 KG) — 52,000
-  4. GẠO ST25 "TD XANH" 5KG (Trọng lượng đóng gói: 5 KG) — 260,000
-  5. GẠO TẤM ST25 "HỮU CƠ" 2KG (Trọng lượng đóng gói: 1 KG) — 82,000
-  6. GẠO LÀI THƠM 1KG (Trọng lượng đóng gói: 1 KG) — 35,500
-  7. GẠO LÀI THƠM 5KG (Trọng lượng đóng gói: 5 KG) — 177,500
-  8. GẠO LỨT DÂU TÂY ĐỎ 1KG (Trọng lượng đóng gói: 1 KG) — 112,000
-  9. GẠO LỨT DÂU TÂY TÍM 1KG (Trọng lượng đóng gói: 1 KG) — 112,000
-  10. GẠO NẾP SẾU ĐẦU ĐỎ 1KG (Trọng lượng đóng gói: 1 KG) — 112,000
-  11. GẠO NẾP CHIM SÂM CẦM 1KG (Trọng lượng đóng gói: 1 KG) — 112,000
-  12. GẠO SUMO (Trọng lượng đóng gói: 1 KG) — 112,000
+  1. GẠO ST25 "HỮU CƠ" 1KG (1 KG) — 72,000
+  2. GẠO ST25 "HỮU CƠ" 5KG (5 KG) — 360,000
+  3. GẠO ST25 "TD XANH" 1KG (1 KG) — 52,000
+  4. GẠO ST25 "TD XANH" 5KG (5 KG) — 260,000
+  5. GẠO TẤM ST25 "HỮU CƠ" 2KG (1 KG) — 82,000
+  6. GẠO LÀI THƠM 1KG (1 KG) — 35,500
+  7. GẠO LÀI THƠM 5KG (5 KG) — 177,500
+  8. GẠO LỨT DÂU TÂY ĐỎ 1KG (1 KG) — 112,000
+  9. GẠO LỨT DÂU TÂY TÍM 1KG (1 KG) — 112,000
+  10. GẠO NẾP SẾU ĐẦU ĐỎ 1KG (1 KG) — 112,000
+  11. GẠO NẾP CHIM SÂM CẦM 1KG (1 KG) — 112,000
+  12. GẠO SUMO (1 KG) — 112,000
 
 NHIỆM VỤ BÓC TÁCH LỊCH LÀM VIỆC:
-- Nếu người dùng nhắn nội dung mang tính sắp xếp, đặt lịch, nhắc việc, hẹn giờ (ví dụ: "Hôm nay 19h họp đại lý", "Ngày mai 9h sáng kiểm kho", "14h30 gặp đối tác"...), hãy bóc tách thông tin sự kiện vào trường "schedule".
+- Nếu người dùng nhắn nội dung mang tính sắp xếp, đặt lịch, nhắc việc, hẹn giờ, hãy bóc tách thông tin sự kiện vào trường "schedule".
 - Nếu chỉ là trò chuyện bình thường hoặc hỏi thông tin, đặt "schedule": null.
 
 BẮT BUỘC TRẢ VỀ ĐÚNG ĐỊNH DẠNG JSON THUẦN (không bọc markdown \`\`\`json):
@@ -136,67 +133,41 @@ BẮT BUỘC TRẢ VỀ ĐÚNG ĐỊNH DẠNG JSON THUẦN (không bọc markdow
   }
 }`;
 
-        // Ưu tiên dòng Gemini Pro trước, tự động dự phòng sang Flash + retry khi tải cao
-        const modelsToTry = [
-          "gemini-3.8-pro",
-          "gemini-3.5-pro",
-          "gemini-3.8-flash"
-        ];
-
-        let geminiResponse = null;
-        let rawResult = null;
-        let usedModel = modelsToTry[0];
-
-        for (const modelName of modelsToTry) {
-          usedModel = modelName;
-          for (let attempt = 0; attempt < 2; attempt++) {
-            geminiResponse = await fetch(
-              `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent`,
-              {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  "x-goog-api-key": env.GEMINI_API_KEY
-                },
-                body: JSON.stringify({
-                  systemInstruction: {
-                    parts: [{ text: systemPrompt }]
-                  },
-                  contents: [
-                    {
-                      role: "user",
-                      parts: [{ text: message }]
-                    }
-                  ],
-                  generationConfig: {
-                    responseMimeType: "application/json",
-                    temperature: 0.4
-                  }
-                })
+        const modelName = "gemini-3.5-flash-lite";
+        const geminiResponse = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent`,
+          {
+            method: "POST",
+            signal: AbortSignal.timeout(10000),
+            headers: {
+              "Content-Type": "application/json",
+              "x-goog-api-key": env.GEMINI_API_KEY
+            },
+            body: JSON.stringify({
+              systemInstruction: {
+                parts: [{ text: systemPrompt }]
+              },
+              contents: [
+                {
+                  role: "user",
+                  parts: [{ text: message }]
+                }
+              ],
+              generationConfig: {
+                responseMimeType: "application/json",
+                temperature: 0.4
               }
-            );
-
-            rawResult = await geminiResponse.json();
-            const errMsg = rawResult?.error?.message || "";
-            const isOverloaded =
-              geminiResponse.status === 429 ||
-              geminiResponse.status === 503 ||
-              errMsg.toLowerCase().includes("high demand") ||
-              errMsg.toLowerCase().includes("overloaded");
-
-            if (!isOverloaded) break;
-            await new Promise((r) => setTimeout(r, 1200));
+            })
           }
+        );
 
-          const hasError = !geminiResponse?.ok || Boolean(rawResult?.error);
-          if (!hasError) break;
-        }
+        const rawResult = await geminiResponse.json();
 
-        if (!geminiResponse?.ok || rawResult?.error) {
-          const apiErr = rawResult?.error?.message || `HTTP ${geminiResponse?.status || 500}`;
+        if (!geminiResponse.ok || rawResult?.error) {
+          const apiErr = rawResult?.error?.message || `HTTP ${geminiResponse.status}`;
           return new Response(
             JSON.stringify({
-              reply: `Lỗi từ Gemini API (${usedModel}): ${apiErr}`,
+              reply: `Lỗi từ Gemini API (${modelName}): ${apiErr}`,
               schedule: null
             }),
             {
@@ -228,7 +199,7 @@ BẮT BUỘC TRẢ VỀ ĐÚNG ĐỊNH DẠNG JSON THUẦN (không bọc markdow
           JSON.stringify({
             reply: parsed.reply || "Đã ghi nhận!",
             schedule: parsed.schedule || null,
-            model: usedModel
+            model: modelName
           }),
           {
             status: 200,
@@ -239,12 +210,21 @@ BẮT BUỘC TRẢ VỀ ĐÚNG ĐỊNH DẠNG JSON THUẦN (không bọc markdow
           }
         );
       } catch (error) {
+        const isTimeout = error?.name === "TimeoutError";
         return new Response(
           JSON.stringify({
-            reply: "Có lỗi kết nối tới Gemini API. Vui lòng thử lại sau.",
+            reply: isTimeout
+              ? "Máy chủ AI phản hồi chậm quá 10 giây, bạn bấm Gửi lại nhé!"
+              : "Có lỗi kết nối tới Gemini API. Vui lòng thử lại sau.",
             schedule: null
           }),
-          { status: 500, headers: { "Content-Type": "application/json" } }
+          {
+            status: 200,
+            headers: {
+              "Content-Type": "application/json",
+              "Access-Control-Allow-Origin": "*"
+            }
+          }
         );
       }
     }
