@@ -2,8 +2,7 @@ window.GoogleCalendarManager = (function () {
   const GOOGLE_CLIENT_ID = "645926964017-6hqgk9jf1umh6qu1tc6vu0ec5c233pta.apps.googleusercontent.com";
   const SCOPES = "https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/userinfo.email";
 
-  let sessionId = localStorage.getItem("dhp_gcal_sid") || "";
-  let accessToken = sessionStorage.getItem("dhp_gcal_token") || "";
+  let accessToken = "";
   let userEmail = localStorage.getItem("dhp_gcal_email") || "";
   let expiresAtMs = Number(localStorage.getItem("dhp_gcal_exp") || "0") || 0;
   let refreshTimer = null;
@@ -30,16 +29,6 @@ window.GoogleCalendarManager = (function () {
 
   function persistCache() {
     try {
-      if (sessionId) {
-        localStorage.setItem("dhp_gcal_sid", sessionId);
-      } else {
-        localStorage.removeItem("dhp_gcal_sid");
-      }
-      if (accessToken) {
-        sessionStorage.setItem("dhp_gcal_token", accessToken);
-      } else {
-        sessionStorage.removeItem("dhp_gcal_token");
-      }
       if (userEmail) {
         localStorage.setItem("dhp_gcal_email", userEmail);
       } else {
@@ -60,25 +49,20 @@ window.GoogleCalendarManager = (function () {
     }
     const delayMs = Math.max(15000, (Number(expiresInSec) - 120) * 1000);
     refreshTimer = setTimeout(() => {
-      refreshSession({ silent: true, reload: false });
+      refreshSession({ reload: false });
     }, delayMs);
   }
 
-  async function refreshSession({ silent = true, reload = false } = {}) {
+  async function refreshSession({ reload = false } = {}) {
     if (ongoingRefreshPromise) {
       return ongoingRefreshPromise;
     }
 
     ongoingRefreshPromise = (async () => {
       try {
-        const headers = {};
-        if (sessionId) {
-          headers["X-Session-Id"] = sessionId;
-        }
         const res = await fetch("/api/auth/refresh", {
-          credentials: "include",
-          cache: "no-store",
-          headers
+          credentials: "same-origin",
+          cache: "no-store"
         });
         if (!res.ok) return null;
         const data = await res.json();
@@ -98,7 +82,6 @@ window.GoogleCalendarManager = (function () {
         }
       } catch {}
 
-      sessionId = "";
       accessToken = "";
       userEmail = "";
       expiresAtMs = 0;
@@ -116,38 +99,7 @@ window.GoogleCalendarManager = (function () {
 
   function login() {
     const remember60 = getRemember60() ? "1" : "0";
-    const authUrl = `/api/auth/google/start?remember60=${remember60}`;
-    const popup = window.open(authUrl, "dhp_google_auth", "width=520,height=650");
-
-    const onMessage = async (event) => {
-      if (event.origin !== window.location.origin) return;
-      if (event.data?.type === "DHP_GCAL_AUTH_SUCCESS") {
-        window.removeEventListener("message", onMessage);
-        sessionId = event.data.sessionId || "";
-        accessToken = event.data.accessToken || "";
-        userEmail = event.data.email || "Tài khoản Google";
-        expiresAtMs = Number(event.data.expiresAtMs) || 0;
-        persistCache();
-        syncUI();
-        scheduleAutoRefresh(event.data.expiresIn || 3600);
-        await refreshSession({ silent: true, reload: false });
-        await loadEvents({ skipRefresh: true });
-        notify(
-          event.data.remember60
-            ? "Đã kết nối Google Calendar (duy trì 60 ngày)!"
-            : "Đã kết nối Google Calendar!"
-        );
-      } else if (event.data?.type === "DHP_GCAL_AUTH_ERROR") {
-        window.removeEventListener("message", onMessage);
-        notify("Đăng nhập Google không thành công.");
-      }
-    };
-
-    window.addEventListener("message", onMessage);
-
-    if (!popup) {
-      window.location.href = authUrl;
-    }
+    window.location.href = `/api/auth/google/start?remember60=${remember60}`;
   }
 
   async function logout() {
@@ -161,8 +113,6 @@ window.GoogleCalendarManager = (function () {
       } catch {}
     }
 
-    const oldSid = sessionId;
-    sessionId = "";
     accessToken = "";
     userEmail = "";
     expiresAtMs = 0;
@@ -172,9 +122,8 @@ window.GoogleCalendarManager = (function () {
     try {
       await fetch("/api/auth/logout", {
         method: "POST",
-        credentials: "include",
-        cache: "no-store",
-        headers: oldSid ? { "X-Session-Id": oldSid } : {}
+        credentials: "same-origin",
+        cache: "no-store"
       });
     } catch {}
 
@@ -187,7 +136,7 @@ window.GoogleCalendarManager = (function () {
     const userBar = document.getElementById("calendarUserBar");
     const emailLabel = document.getElementById("loggedUserEmail");
     const container = document.getElementById("calendarEventsContainer");
-    const isLoggedIn = Boolean(accessToken || (sessionId && expiresAtMs > Date.now()));
+    const isLoggedIn = Boolean(accessToken || (userEmail && expiresAtMs > Date.now()));
 
     if (isLoggedIn) {
       if (headerArea) {
@@ -229,7 +178,7 @@ window.GoogleCalendarManager = (function () {
   async function deleteEvent(eventId, title = "") {
     if (!eventId) return false;
     if (!accessToken) {
-      await refreshSession({ silent: true, reload: false });
+      await refreshSession({ reload: false });
     }
     if (!accessToken) {
       notify("Bạn cần đăng nhập Google trước khi xóa lịch trình.");
@@ -247,7 +196,7 @@ window.GoogleCalendarManager = (function () {
       });
 
       if (res.status === 401) {
-        const refreshedToken = await refreshSession({ silent: false, reload: false });
+        const refreshedToken = await refreshSession({ reload: false });
         if (refreshedToken) {
           res = await fetch(endpoint, {
             method: "DELETE",
@@ -281,7 +230,7 @@ window.GoogleCalendarManager = (function () {
     if (!container) return;
 
     if (!accessToken && !skipRefresh) {
-      await refreshSession({ silent: true, reload: false });
+      await refreshSession({ reload: false });
     }
     if (!accessToken) return;
 
@@ -302,7 +251,7 @@ window.GoogleCalendarManager = (function () {
       });
 
       if (res.status === 401) {
-        const refreshedToken = await refreshSession({ silent: false, reload: false });
+        const refreshedToken = await refreshSession({ reload: false });
         if (refreshedToken) {
           res = await fetch(url.toString(), {
             headers: { Authorization: `Bearer ${refreshedToken}` }
@@ -374,7 +323,7 @@ window.GoogleCalendarManager = (function () {
 
   async function createEvent(scheduleOrTitle, dateArg, startTimeArg, endTimeArg, descArg) {
     if (!accessToken) {
-      await refreshSession({ silent: true, reload: false });
+      await refreshSession({ reload: false });
     }
     if (!accessToken) {
       notify("Bạn cần đăng nhập Google trước khi lưu sự kiện lên Google Calendar!");
@@ -419,7 +368,7 @@ window.GoogleCalendarManager = (function () {
       });
 
       if (res.status === 401) {
-        const refreshedToken = await refreshSession({ silent: false, reload: false });
+        const refreshedToken = await refreshSession({ reload: false });
         if (refreshedToken) {
           res = await fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events", {
             method: "POST",
@@ -448,6 +397,17 @@ window.GoogleCalendarManager = (function () {
     }
   }
 
+  function handleRedirectParams() {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("gcal_ok") === "1") {
+      window.history.replaceState({}, "", window.location.pathname);
+      notify("Đã kết nối Google Calendar (duy trì 60 ngày)!");
+    } else if (params.get("gcal_error")) {
+      window.history.replaceState({}, "", window.location.pathname);
+      notify("Đăng nhập Google không thành công.");
+    }
+  }
+
   function bindSectionEvents() {
     document.getElementById("googleLoginHeaderBtn")?.addEventListener("click", login);
     document.getElementById("googleLoginCardBtn")?.addEventListener("click", login);
@@ -458,15 +418,19 @@ window.GoogleCalendarManager = (function () {
     if (accessToken) {
       loadEvents({ skipRefresh: true });
     }
-    refreshSession({ silent: true, reload: true });
+    refreshSession({ reload: true });
   }
+
+  handleRedirectParams();
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", () => {
-      refreshSession({ silent: true, reload: false });
+      syncUI();
+      refreshSession({ reload: false });
     });
   } else {
-    refreshSession({ silent: true, reload: false });
+    syncUI();
+    refreshSession({ reload: false });
   }
 
   return {
