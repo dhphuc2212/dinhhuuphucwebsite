@@ -429,7 +429,8 @@ BẮT BUỘC TRẢ VỀ ĐÚNG ĐỊNH DẠNG JSON THUẦN (không bọc markdow
   "reply": "Câu trả lời tiếng Việt tự nhiên, ngắn gọn, lịch sự cho người dùng",
   "schedule": null hoặc {
     "title": "Tiêu đề ngắn gọn của lịch làm việc",
-    "date": "YYYY-MM-DD",
+    "date": "DD-MM-YYYY",
+    "endDate": "DD-MM-YYYY (bằng date nếu chỉ diễn ra trong 1 ngày, hoặc ngày kết thúc nếu sự kiện kéo dài nhiều ngày)",
     "startTime": "HH:MM",
     "endTime": "HH:MM",
     "description": "Ghi chú thêm nếu có"
