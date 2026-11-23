@@ -4,7 +4,7 @@ const CALENDAR_SCOPES = [
   "https://www.googleapis.com/auth/userinfo.email",
   "https://www.googleapis.com/auth/userinfo.profile"
 ].join(" ");
-const SIXTY_DAYS_SEC = 60 * 24 * 60 * 60; // 5,184,000 giây
+const SIXTY_DAYS_SEC = 60 * 24 * 60 * 60;
 const COOKIE_NAME = "dhp_gcal_sid";
 
 function jsonRes(data, status = 200, extraHeaders = {}) {
@@ -42,8 +42,8 @@ export default {
     const url = new URL(request.url);
     const pathname = url.pathname.replace(/\/+$/, "") || "/";
     const redirectUri = `${url.origin}/api/auth/google/callback`;
+    const isProdDomain = url.hostname.endsWith("dinhhuuphuc.com");
 
-    // 0A. Bắt đầu luồng OAuth Code (nhận remember60=1 để giữ đăng nhập 60 ngày)
     if (pathname === "/api/auth/google/start") {
       const remember60 = url.searchParams.get("remember60") === "1";
       const statePayload = btoa(
@@ -67,7 +67,6 @@ export default {
       return Response.redirect(authUrl.toString(), 302);
     }
 
-    // 0B. Callback từ Google -> đổi code lấy refresh_token & lưu phiên 60 ngày
     if (pathname === "/api/auth/google/callback") {
       const code = url.searchParams.get("code");
       const error = url.searchParams.get("error");
@@ -129,12 +128,13 @@ export default {
 
       const maxAgeSec = remember60 ? SIXTY_DAYS_SEC : 24 * 60 * 60;
       const expiresAtMs = Date.now() + maxAgeSec * 1000;
+      const expiresIn = Number(tokenData.expires_in) || 3600;
       const sessionId = randomId(24);
 
       const sessionRecord = {
         refreshToken: tokenData.refresh_token || null,
         accessToken: tokenData.access_token,
-        accessExpiresAt: Date.now() + (Number(tokenData.expires_in) || 3600) * 1000,
+        accessExpiresAt: Date.now() + expiresIn * 1000,
         email,
         remember60,
         expiresAtMs
@@ -149,6 +149,7 @@ export default {
       const cookieParts = [
         `${COOKIE_NAME}=${encodeURIComponent(sessionId)}`,
         "Path=/",
+        ...(isProdDomain ? ["Domain=.dinhhuuphuc.com"] : []),
         "HttpOnly",
         "Secure",
         "SameSite=Lax",
@@ -159,6 +160,8 @@ export default {
         `<!doctype html><html><body><script>
           const payload = {
             type: "DHP_GCAL_AUTH_SUCCESS",
+            accessToken: ${JSON.stringify(tokenData.access_token)},
+            expiresIn: ${JSON.stringify(expiresIn)},
             email: ${JSON.stringify(email)},
             remember60: ${JSON.stringify(remember60)},
             expiresAtMs: ${JSON.stringify(expiresAtMs)}
@@ -180,7 +183,6 @@ export default {
       );
     }
 
-    // 0C. Cấp lại access_token mới dựa trên phiên 60 ngày
     if (pathname === "/api/auth/refresh") {
       const cookies = parseCookies(request.headers.get("Cookie") || "");
       const sid = cookies[COOKIE_NAME];
@@ -249,21 +251,24 @@ export default {
       });
     }
 
-    // 0D. Đăng xuất & hủy phiên trên KV
     if (pathname === "/api/auth/logout") {
       const cookies = parseCookies(request.headers.get("Cookie") || "");
       const sid = cookies[COOKIE_NAME];
       if (sid && env.AUTH_SESSIONS) {
         await env.AUTH_SESSIONS.delete(`sess:${sid}`);
       }
-      return jsonRes(
-        { ok: true },
-        200,
-        { "Set-Cookie": `${COOKIE_NAME}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0` }
-      );
+      const clearCookie = [
+        `${COOKIE_NAME}=`,
+        "Path=/",
+        ...(isProdDomain ? ["Domain=.dinhhuuphuc.com"] : []),
+        "HttpOnly",
+        "Secure",
+        "SameSite=Lax",
+        "Max-Age=0"
+      ].join("; ");
+      return jsonRes({ ok: true }, 200, { "Set-Cookie": clearCookie });
     }
 
-    // 1. Trang Chính sách quyền riêng tư (/privacy)
     if (pathname === "/privacy") {
       const html = `<!DOCTYPE html>
 <html lang="vi">
@@ -303,7 +308,6 @@ export default {
       return new Response(html, { status: 200, headers: { "Content-Type": "text/html; charset=UTF-8" } });
     }
 
-    // 2. Trang Điều khoản dịch vụ (/terms)
     if (pathname === "/terms") {
       const html = `<!DOCTYPE html>
 <html lang="vi">
@@ -342,7 +346,6 @@ export default {
       return new Response(html, { status: 200, headers: { "Content-Type": "text/html; charset=UTF-8" } });
     }
 
-    // 3. Endpoint kiểm tra danh sách model khả dụng
     if (pathname === "/api/models") {
       if (!env.GEMINI_API_KEY) {
         return jsonRes({ error: "Chưa cấu hình GEMINI_API_KEY trên Worker." }, 400);
@@ -364,7 +367,6 @@ export default {
       }
     }
 
-    // 4. Endpoint AI Chatbot Gemini (Ưu tiên Gemini 3.5 Flash-Lite + xoay vòng dòng 3.x)
     if (pathname === "/api/chat") {
       if (request.method === "OPTIONS") {
         return new Response(null, {
@@ -508,7 +510,6 @@ BẮT BUỘC TRẢ VỀ ĐÚNG ĐỊNH DẠNG JSON THUẦN (không bọc markdow
       }
     }
 
-    // 5. Phục vụ file tĩnh
     const assetResponse = await env.ASSETS.fetch(request);
     if (assetResponse.status !== 404) return assetResponse;
     return env.ASSETS.fetch(new Request(new URL("/index.html", request.url), request));
