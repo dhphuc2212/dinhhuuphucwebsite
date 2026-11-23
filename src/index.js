@@ -1,7 +1,267 @@
+const GOOGLE_CLIENT_ID = "645926964017-6hqgk9jf1umh6qu1tc6vu0ec5c233pta.apps.googleusercontent.com";
+const CALENDAR_SCOPES = [
+  "https://www.googleapis.com/auth/calendar.events",
+  "https://www.googleapis.com/auth/userinfo.email",
+  "https://www.googleapis.com/auth/userinfo.profile"
+].join(" ");
+const SIXTY_DAYS_SEC = 60 * 24 * 60 * 60; // 5,184,000 giây
+const COOKIE_NAME = "dhp_gcal_sid";
+
+function jsonRes(data, status = 200, extraHeaders = {}) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      "Content-Type": "application/json",
+      "Access-Control-Allow-Origin": "*",
+      ...extraHeaders
+    }
+  });
+}
+
+function parseCookies(cookieHeader = "") {
+  const map = {};
+  cookieHeader.split(";").forEach((part) => {
+    const idx = part.indexOf("=");
+    if (idx > -1) {
+      const k = part.slice(0, idx).trim();
+      const v = part.slice(idx + 1).trim();
+      if (k) map[k] = decodeURIComponent(v);
+    }
+  });
+  return map;
+}
+
+function randomId(bytes = 24) {
+  const arr = new Uint8Array(bytes);
+  crypto.getRandomValues(arr);
+  return Array.from(arr, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     const pathname = url.pathname.replace(/\/+$/, "") || "/";
+    const redirectUri = `${url.origin}/api/auth/google/callback`;
+
+    // 0A. Bắt đầu luồng OAuth Code (nhận remember60=1 để giữ đăng nhập 60 ngày)
+    if (pathname === "/api/auth/google/start") {
+      const remember60 = url.searchParams.get("remember60") === "1";
+      const statePayload = btoa(
+        JSON.stringify({
+          nonce: randomId(12),
+          remember60,
+          ts: Date.now()
+        })
+      );
+
+      const authUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth");
+      authUrl.searchParams.set("client_id", GOOGLE_CLIENT_ID);
+      authUrl.searchParams.set("redirect_uri", redirectUri);
+      authUrl.searchParams.set("response_type", "code");
+      authUrl.searchParams.set("scope", CALENDAR_SCOPES);
+      authUrl.searchParams.set("access_type", "offline");
+      authUrl.searchParams.set("prompt", "consent");
+      authUrl.searchParams.set("include_granted_scopes", "true");
+      authUrl.searchParams.set("state", statePayload);
+
+      return Response.redirect(authUrl.toString(), 302);
+    }
+
+    // 0B. Callback từ Google -> đổi code lấy refresh_token & lưu phiên 60 ngày
+    if (pathname === "/api/auth/google/callback") {
+      const code = url.searchParams.get("code");
+      const error = url.searchParams.get("error");
+      const stateRaw = url.searchParams.get("state") || "";
+
+      if (error || !code) {
+        return new Response(
+          `<!doctype html><html><body><script>
+            if (window.opener) {
+              window.opener.postMessage({ type: "DHP_GCAL_AUTH_ERROR", error: ${JSON.stringify(error || "missing_code")} }, "*");
+              window.close();
+            } else {
+              window.location.href = "/?gcal_auth=error";
+            }
+          </script></body></html>`,
+          { status: 200, headers: { "Content-Type": "text/html; charset=UTF-8" } }
+        );
+      }
+
+      let remember60 = true;
+      try {
+        const parsedState = JSON.parse(atob(stateRaw));
+        remember60 = Boolean(parsedState?.remember60);
+      } catch {}
+
+      if (!env.GOOGLE_CLIENT_SECRET) {
+        return new Response("Thiếu biến bí mật GOOGLE_CLIENT_SECRET trên Cloudflare Worker.", { status: 500 });
+      }
+
+      const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          code,
+          client_id: GOOGLE_CLIENT_ID,
+          client_secret: env.GOOGLE_CLIENT_SECRET,
+          redirect_uri: redirectUri,
+          grant_type: "authorization_code"
+        })
+      });
+
+      const tokenData = await tokenRes.json();
+      if (!tokenRes.ok || !tokenData.access_token) {
+        return new Response(`Lỗi đổi token Google: ${tokenData.error_description || tokenData.error || tokenRes.status}`, {
+          status: 400
+        });
+      }
+
+      let email = "";
+      try {
+        const userRes = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
+          headers: { Authorization: `Bearer ${tokenData.access_token}` }
+        });
+        if (userRes.ok) {
+          const u = await userRes.json();
+          email = u.email || "";
+        }
+      } catch {}
+
+      const maxAgeSec = remember60 ? SIXTY_DAYS_SEC : 24 * 60 * 60;
+      const expiresAtMs = Date.now() + maxAgeSec * 1000;
+      const sessionId = randomId(24);
+
+      const sessionRecord = {
+        refreshToken: tokenData.refresh_token || null,
+        accessToken: tokenData.access_token,
+        accessExpiresAt: Date.now() + (Number(tokenData.expires_in) || 3600) * 1000,
+        email,
+        remember60,
+        expiresAtMs
+      };
+
+      if (env.AUTH_SESSIONS) {
+        await env.AUTH_SESSIONS.put(`sess:${sessionId}`, JSON.stringify(sessionRecord), {
+          expirationTtl: maxAgeSec
+        });
+      }
+
+      const cookieParts = [
+        `${COOKIE_NAME}=${encodeURIComponent(sessionId)}`,
+        "Path=/",
+        "HttpOnly",
+        "Secure",
+        "SameSite=Lax",
+        ...(remember60 ? [`Max-Age=${maxAgeSec}`] : [])
+      ];
+
+      return new Response(
+        `<!doctype html><html><body><script>
+          const payload = {
+            type: "DHP_GCAL_AUTH_SUCCESS",
+            email: ${JSON.stringify(email)},
+            remember60: ${JSON.stringify(remember60)},
+            expiresAtMs: ${JSON.stringify(expiresAtMs)}
+          };
+          if (window.opener && !window.opener.closed) {
+            window.opener.postMessage(payload, window.location.origin);
+            window.close();
+          } else {
+            window.location.href = "/";
+          }
+        </script></body></html>`,
+        {
+          status: 200,
+          headers: {
+            "Content-Type": "text/html; charset=UTF-8",
+            "Set-Cookie": cookieParts.join("; ")
+          }
+        }
+      );
+    }
+
+    // 0C. Cấp lại access_token mới dựa trên phiên 60 ngày
+    if (pathname === "/api/auth/refresh") {
+      const cookies = parseCookies(request.headers.get("Cookie") || "");
+      const sid = cookies[COOKIE_NAME];
+      if (!sid || !env.AUTH_SESSIONS) {
+        return jsonRes({ authenticated: false }, 200);
+      }
+
+      const rawSess = await env.AUTH_SESSIONS.get(`sess:${sid}`);
+      if (!rawSess) {
+        return jsonRes({ authenticated: false }, 200);
+      }
+
+      const sess = JSON.parse(rawSess);
+      if (sess.expiresAtMs && Date.now() > sess.expiresAtMs) {
+        await env.AUTH_SESSIONS.delete(`sess:${sid}`);
+        return jsonRes({ authenticated: false }, 200);
+      }
+
+      if (sess.accessToken && sess.accessExpiresAt && Date.now() < sess.accessExpiresAt - 60000) {
+        return jsonRes({
+          authenticated: true,
+          accessToken: sess.accessToken,
+          expiresIn: Math.floor((sess.accessExpiresAt - Date.now()) / 1000),
+          email: sess.email || "",
+          remember60: Boolean(sess.remember60),
+          expiresAtMs: sess.expiresAtMs
+        });
+      }
+
+      if (!sess.refreshToken || !env.GOOGLE_CLIENT_SECRET) {
+        return jsonRes({ authenticated: false }, 200);
+      }
+
+      const refreshRes = await fetch("https://oauth2.googleapis.com/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          client_id: GOOGLE_CLIENT_ID,
+          client_secret: env.GOOGLE_CLIENT_SECRET,
+          refresh_token: sess.refreshToken,
+          grant_type: "refresh_token"
+        })
+      });
+
+      const refreshed = await refreshRes.json();
+      if (!refreshRes.ok || !refreshed.access_token) {
+        return jsonRes({ authenticated: false }, 200);
+      }
+
+      const newExpiresIn = Number(refreshed.expires_in) || 3600;
+      sess.accessToken = refreshed.access_token;
+      sess.accessExpiresAt = Date.now() + newExpiresIn * 1000;
+
+      const remainingTtl = Math.max(60, Math.floor((sess.expiresAtMs - Date.now()) / 1000));
+      await env.AUTH_SESSIONS.put(`sess:${sid}`, JSON.stringify(sess), {
+        expirationTtl: remainingTtl
+      });
+
+      return jsonRes({
+        authenticated: true,
+        accessToken: sess.accessToken,
+        expiresIn: newExpiresIn,
+        email: sess.email || "",
+        remember60: Boolean(sess.remember60),
+        expiresAtMs: sess.expiresAtMs
+      });
+    }
+
+    // 0D. Đăng xuất & hủy phiên trên KV
+    if (pathname === "/api/auth/logout") {
+      const cookies = parseCookies(request.headers.get("Cookie") || "");
+      const sid = cookies[COOKIE_NAME];
+      if (sid && env.AUTH_SESSIONS) {
+        await env.AUTH_SESSIONS.delete(`sess:${sid}`);
+      }
+      return jsonRes(
+        { ok: true },
+        200,
+        { "Set-Cookie": `${COOKIE_NAME}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0` }
+      );
+    }
 
     // 1. Trang Chính sách quyền riêng tư (/privacy)
     if (pathname === "/privacy") {
@@ -32,18 +292,15 @@ export default {
       <li><strong>Google Calendar (calendar.events):</strong> dùng để đọc danh sách sự kiện sắp tới và thêm sự kiện lịch làm việc mới theo yêu cầu trực tiếp của bạn.</li>
     </ul>
     <h2>2. Cách thức lưu trữ và bảo mật</h2>
-    <p>Phiên đăng nhập và token truy cập Google Calendar được xử lý trực tiếp trên trình duyệt của bạn. Website <strong>không</strong> lưu trữ mật khẩu, không thu thập hay chia sẻ dữ liệu lịch cá nhân của bạn cho bất kỳ bên thứ ba nào.</p>
+    <p>Nếu bạn chọn <strong>"Duy trì đăng nhập trong 60 ngày"</strong>, phiên làm việc được duy trì tối đa 60 ngày để bạn không phải đăng nhập lại mỗi lần mở máy. Website <strong>không</strong> lưu trữ mật khẩu và không chia sẻ dữ liệu lịch cá nhân của bạn cho bất kỳ bên thứ ba nào.</p>
     <h2>3. Quyền kiểm soát và thu hồi quyền truy cập</h2>
-    <p>Bạn có thể nhấn <strong>"Đăng xuất"</strong> ngay trên trang web bất cứ lúc nào hoặc thu hồi quyền truy cập của <strong>dinhhuuphuc.com</strong> tại trang quản lý bảo mật tài khoản Google (<a href="https://myaccount.google.com/permissions" target="_blank" rel="noopener noreferrer">myaccount.google.com/permissions</a>).</p>
+    <p>Bạn có thể nhấn <strong>"Đăng xuất"</strong> ngay trên trang web bất cứ lúc nào hoặc thu hồi quyền truy cập tại <a href="https://myaccount.google.com/permissions" target="_blank" rel="noopener noreferrer">myaccount.google.com/permissions</a>.</p>
     <h2>4. Thông tin liên hệ</h2>
-    <p>Mọi thắc mắc về quyền riêng tư, vui lòng liên hệ Đinh Hữu Phúc qua email cá nhân: <a href="mailto:dhphuc2212@dinhhuuphuc.com">dhphuc2212@dinhhuuphuc.com</a> hoặc <a href="mailto:dhphuc2212@gmail.com">dhphuc2212@gmail.com</a> • <a href="/">Quay lại trang chủ</a>.</p>
+    <p>Liên hệ cá nhân: <a href="mailto:dhphuc2212@dinhhuuphuc.com">dhphuc2212@dinhhuuphuc.com</a> hoặc <a href="mailto:dhphuc2212@gmail.com">dhphuc2212@gmail.com</a> • <a href="/">Quay lại trang chủ</a>.</p>
   </main>
 </body>
 </html>`;
-      return new Response(html, {
-        status: 200,
-        headers: { "Content-Type": "text/html; charset=UTF-8" }
-      });
+      return new Response(html, { status: 200, headers: { "Content-Type": "text/html; charset=UTF-8" } });
     }
 
     // 2. Trang Điều khoản dịch vụ (/terms)
@@ -69,7 +326,7 @@ export default {
     <h1>Điều khoản dịch vụ (Terms of Service)</h1>
     <div class="meta">Cập nhật lần cuối: 22/11/2026 • Website: dinhhuuphuc.com</div>
     <h2>1. Mục đích sử dụng</h2>
-    <p>Website <strong>dinhhuuphuc.com</strong> là trang thông tin cá nhân của Đinh Hữu Phúc, cung cấp thông tin liên hệ, giới thiệu sản phẩm Gạo Ông Du, trò chơi giải trí và công cụ trợ lý AI hỗ trợ sắp xếp lịch làm việc lên Google Calendar cá nhân.</p>
+    <p>Website <strong>dinhhuuphuc.com</strong> cung cấp thông tin cá nhân, thông tin sản phẩm Gạo Ông Du, mini-game và công cụ trợ lý AI hỗ trợ sắp xếp lịch làm việc lên Google Calendar cá nhân.</p>
     <h2>2. Trách nhiệm người dùng</h2>
     <ul>
       <li>Người dùng tự chịu trách nhiệm đối với nội dung sự kiện được tạo và lưu vào tài khoản Google Calendar của mình.</li>
@@ -82,19 +339,13 @@ export default {
   </main>
 </body>
 </html>`;
-      return new Response(html, {
-        status: 200,
-        headers: { "Content-Type": "text/html; charset=UTF-8" }
-      });
+      return new Response(html, { status: 200, headers: { "Content-Type": "text/html; charset=UTF-8" } });
     }
 
     // 3. Endpoint kiểm tra danh sách model khả dụng
     if (pathname === "/api/models") {
       if (!env.GEMINI_API_KEY) {
-        return new Response(
-          JSON.stringify({ error: "Chưa cấu hình GEMINI_API_KEY trên Worker." }),
-          { status: 400, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }
-        );
+        return jsonRes({ error: "Chưa cấu hình GEMINI_API_KEY trên Worker." }, 400);
       }
       try {
         const res = await fetch("https://generativelanguage.googleapis.com/v1beta/models", {
@@ -107,15 +358,9 @@ export default {
             id: (m.name || "").replace(/^models\//, ""),
             displayName: m.displayName || m.name
           }));
-        return new Response(
-          JSON.stringify({ count: available.length, models: available }, null, 2),
-          { status: 200, headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" } }
-        );
+        return jsonRes({ count: available.length, models: available }, 200);
       } catch {
-        return new Response(
-          JSON.stringify({ error: "Không thể lấy danh sách model từ Gemini API." }),
-          { status: 500, headers: { "Content-Type": "application/json" } }
-        );
+        return jsonRes({ error: "Không thể lấy danh sách model từ Gemini API." }, 500);
       }
     }
 
@@ -131,12 +376,8 @@ export default {
           }
         });
       }
-
       if (request.method !== "POST") {
-        return new Response(JSON.stringify({ error: "Method Not Allowed" }), {
-          status: 405,
-          headers: { "Content-Type": "application/json" }
-        });
+        return jsonRes({ error: "Method Not Allowed" }, 405);
       }
 
       try {
@@ -145,21 +386,9 @@ export default {
         const todayIso = (body.today || new Date().toISOString().slice(0, 10)).toString();
         const timezone = (body.timezone || "Asia/Ho_Chi_Minh").toString();
 
-        if (!message) {
-          return new Response(JSON.stringify({ error: "Vui lòng nhập nội dung." }), {
-            status: 400,
-            headers: { "Content-Type": "application/json" }
-          });
-        }
-
+        if (!message) return jsonRes({ error: "Vui lòng nhập nội dung." }, 400);
         if (!env.GEMINI_API_KEY) {
-          return new Response(
-            JSON.stringify({
-              reply: "Hệ thống AI chưa có GEMINI_API_KEY trên Cloudflare Worker.",
-              schedule: null
-            }),
-            { status: 200, headers: { "Content-Type": "application/json" } }
-          );
+          return jsonRes({ reply: "Hệ thống AI chưa có GEMINI_API_KEY trên Cloudflare Worker.", schedule: null });
         }
 
         const systemPrompt = `Bạn là Trợ lý AI thông minh trên website cá nhân của Đinh Hữu Phúc (dinhhuuphuc.com).
@@ -205,7 +434,6 @@ BẮT BUỘC TRẢ VỀ ĐÚNG ĐỊNH DẠNG JSON THUẦN (không bọc markdow
   }
 }`;
 
-        // Xoay vòng các model thế hệ 3.x (loại bỏ 2.5 và 2.0)
         const fallbackModels = [
           "gemini-3.5-flash-lite",
           "gemini-3.8-flash",
@@ -228,49 +456,28 @@ BẮT BUỘC TRẢ VỀ ĐÚNG ĐỊNH DẠNG JSON THUẦN (không bọc markdow
                 body: JSON.stringify({
                   systemInstruction: { parts: [{ text: systemPrompt }] },
                   contents: [{ role: "user", parts: [{ text: message }] }],
-                  generationConfig: {
-                    responseMimeType: "application/json",
-                    temperature: 0.4
-                  }
+                  generationConfig: { responseMimeType: "application/json", temperature: 0.4 }
                 })
               }
             );
-
             const data = await res.json();
             if (!res.ok || data?.error) {
               lastError = data?.error?.message || `HTTP ${res.status}`;
               continue;
             }
-
             const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
-            let parsed = {
-              reply: "Xin lỗi, mình chưa thể phản hồi lúc này. Bạn thử nhắn lại nhé!",
-              schedule: null
-            };
+            let parsed = { reply: "Xin lỗi, mình chưa thể phản hồi lúc này.", schedule: null };
             try {
               parsed = JSON.parse(rawText);
             } catch {
               if (rawText) parsed.reply = rawText;
             }
-
-            return new Response(
-              JSON.stringify({
-                reply: parsed.reply || "Đã ghi nhận!",
-                schedule: parsed.schedule || null,
-                model: modelName
-              }),
-              {
-                status: 200,
-                headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
-              }
-            );
+            return jsonRes({ reply: parsed.reply || "Đã ghi nhận!", schedule: parsed.schedule || null, model: modelName });
           } catch (e) {
             lastError = e?.message || "Timeout";
-            continue;
           }
         }
 
-        // Fallback cục bộ nếu tất cả model Gemini đang cao điểm: vẫn tự nhận diện giờ để tạo lịch
         const timeMatch = message.match(/\b(\d{1,2})\s*(?:h|:|giờ)\s*(\d{2})?\b/i);
         if (timeMatch) {
           const hour = timeMatch[1].padStart(2, "0");
@@ -280,55 +487,30 @@ BẮT BUỘC TRẢ VỀ ĐÚNG ĐỊNH DẠNG JSON THUẦN (không bọc markdow
           const targetDate = new Date(todayIso + "T00:00:00");
           if (isTomorrow) targetDate.setDate(targetDate.getDate() + 1);
           const dateStr = targetDate.toISOString().slice(0, 10);
-
-          return new Response(
-            JSON.stringify({
-              reply: `Máy chủ Gemini đang cao điểm nên mình tự động bóc tách giúp bạn lịch lúc ${hour}:${minute} ngày ${dateStr}. Bạn kiểm tra và bấm "Lưu vào Google Calendar" bên dưới nhé!`,
-              schedule: {
-                title: message,
-                date: dateStr,
-                startTime: `${hour}:${minute}`,
-                endTime: `${endHour}:${minute}`,
-                description: "Tạo nhanh từ trợ lý website dinhhuuphuc.com"
-              }
-            }),
-            {
-              status: 200,
-              headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
+          return jsonRes({
+            reply: `Đã tự động bóc tách lịch lúc ${hour}:${minute} ngày ${dateStr}. Bạn kiểm tra và bấm lưu vào Google Calendar nhé!`,
+            schedule: {
+              title: message,
+              date: dateStr,
+              startTime: `${hour}:${minute}`,
+              endTime: `${endHour}:${minute}`,
+              description: "Tạo nhanh từ trợ lý dinhhuuphuc.com"
             }
-          );
+          });
         }
 
-        return new Response(
-          JSON.stringify({
-            reply: `Hệ thống Gemini đang quá tải tạm thời trên tất cả các kênh (${lastError}). Bạn thử gửi lại sau vài giây hoặc nhắn trực tiếp qua Zalo cho Phúc nhé!`,
-            schedule: null
-          }),
-          {
-            status: 200,
-            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
-          }
-        );
+        return jsonRes({
+          reply: `Hệ thống Gemini đang bận (${lastError}). Bạn thử gửi lại sau vài giây hoặc nhắn qua Zalo cho Phúc nhé!`,
+          schedule: null
+        });
       } catch {
-        return new Response(
-          JSON.stringify({
-            reply: "Có lỗi kết nối tới hệ thống AI. Vui lòng thử lại sau.",
-            schedule: null
-          }),
-          {
-            status: 200,
-            headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" }
-          }
-        );
+        return jsonRes({ reply: "Có lỗi kết nối tới hệ thống AI.", schedule: null });
       }
     }
 
-    // 5. Phục vụ các file tĩnh (index.html, css/*, js/*, sections/*)
+    // 5. Phục vụ file tĩnh
     const assetResponse = await env.ASSETS.fetch(request);
-    if (assetResponse.status !== 404) {
-      return assetResponse;
-    }
-
+    if (assetResponse.status !== 404) return assetResponse;
     return env.ASSETS.fetch(new Request(new URL("/index.html", request.url), request));
   }
 };
