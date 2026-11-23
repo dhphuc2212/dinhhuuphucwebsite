@@ -45,7 +45,7 @@ window.GoogleCalendarManager = (function () {
     }
     const delayMs = Math.max(15000, (Number(expiresInSec) - 120) * 1000);
     refreshTimer = setTimeout(() => {
-      refreshSession({ silent: true });
+      refreshSession({ silent: true, reload: false });
     }, delayMs);
   }
 
@@ -321,7 +321,6 @@ window.GoogleCalendarManager = (function () {
     refreshSession({ silent: true, reload: true });
   }
 
-  // Tự động khôi phục phiên 60 ngày ngay khi tải trang
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", () => {
       refreshSession({ silent: true, reload: false });
