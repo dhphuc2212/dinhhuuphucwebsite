@@ -3,29 +3,15 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Đinh Hữu Phúc — Proifile</title>
-  <meta name="description" content="Trang thông tin cá nhân của Đinh Hữu Phúc — Kết nối trực tiếp, trợ lý AI Gemini và tiện ích giải trí." />
-
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet" />
-
+  <title>Đinh Hữu Phúc — Minimalist Portfolio &amp; AI Schedule</title>
+  <meta name="description" content="Website cá nhân Đinh Hữu Phúc (dinhhuuphuc.com) — Trợ lý AI bóc tách lịch làm việc, đồng bộ Google Calendar duy trì 60 ngày và thông tin công việc Gạo Ông Du." />
+  <link rel="stylesheet" href="css/style.css" />
   <script src="https://accounts.google.com/gsi/client" async defer></script>
-
-  <link rel="stylesheet" href="./css/style.css" />
-  <link rel="stylesheet" href="./css/chat.css" />
-  <link rel="stylesheet" href="./css/caro.css" />
-  <link rel="stylesheet" href="./css/snake.css" />
-  <link rel="stylesheet" href="./css/sudoku.css" />
 </head>
 <body>
-  <div id="scrollProgress" class="scroll-progress"></div>
-  <div class="ambient-bg" aria-hidden="true"></div>
-
   <header class="site-header">
     <div class="container header-inner">
-      <a href="#about" class="brand-logo" data-tab="about">
-        <span class="brand-mark">DHP</span>
+      <a href="/" class="brand-logo" aria-label="Trang chủ Đinh Hữu Phúc">
         <span class="brand-name">Đinh Hữu Phúc<span class="brand-dot">.</span></span>
       </a>
 
@@ -57,73 +43,200 @@
   </header>
 
   <main class="site-main">
-    <div id="sectionMount" class="container section-mount">
-      <div class="skeleton-loader">Đang tải không gian cá nhân...</div>
+    <div class="container">
+      <!-- TAB 01: CÁ NHÂN, AI CHATBOT & GOOGLE CALENDAR -->
+      <section id="tab-about" class="tab-panel active" aria-label="Cá nhân và Trợ lý lịch">
+        <div class="hero-minimal">
+          <p class="eyebrow">HÒA BÌNH, TP.HCM • DINHHUUPHUC.COM</p>
+          <h1>Xin chào, mình là <strong>Đinh Hữu Phúc</strong>.</h1>
+          <p class="hero-desc">
+            Không gian tối giản cho ghi chú công việc, trợ lý AI bóc tách lịch hẹn nhanh và đồng bộ trực tiếp lên Google Calendar cá nhân.
+          </p>
+        </div>
+
+        <div class="grid-two-col">
+          <!-- TRỢ LÝ AI BÓC TÁCH LỊCH -->
+          <article class="card ai-assistant-card">
+            <div class="card-header">
+              <div>
+                <p class="card-tag">AI WORKFLOW</p>
+                <h2>Trợ lý AI &amp; Bóc tách lịch làm việc</h2>
+              </div>
+            </div>
+            <p class="card-desc">
+              Nhập lịch họp, lịch giao hàng hoặc nhắc việc tự nhiên (ví dụ: <em>"14h ngày mai họp đối tác tại văn phòng"</em>) để AI bóc tách và chuẩn bị lưu vào Google Calendar.
+            </p>
+
+            <div id="aiChatMessages" class="chat-messages" aria-live="polite">
+              <div class="chat-msg assistant">
+                Chào bạn, mình là trợ lý AI của <strong>dinhhuuphuc.com</strong>. Bạn cần đặt lịch làm việc hay hỏi thông tin gì cứ nhắn nhé!
+              </div>
+            </div>
+
+            <form id="aiChatForm" class="chat-form">
+              <input
+                type="text"
+                id="aiChatInput"
+                class="input-control"
+                placeholder="VD: 9h30 ngày mai kiểm tra đơn hàng và lịch họp..."
+                autocomplete="off"
+                required
+              />
+              <button type="submit" id="aiChatSubmitBtn" class="btn btn-primary hover-arrow">
+                <span>Gửi</span>
+                <span class="arrow">→</span>
+              </button>
+            </form>
+
+            <div id="scheduleDraftBox" class="schedule-draft hidden">
+              <h3>Xem trước lịch bóc tách</h3>
+              <div class="draft-grid">
+                <label>
+                  <span>Tiêu đề</span>
+                  <input type="text" id="draftTitle" class="input-control" />
+                </label>
+                <label>
+                  <span>Ngày</span>
+                  <input type="date" id="draftDate" class="input-control" />
+                </label>
+                <label>
+                  <span>Bắt đầu</span>
+                  <input type="time" id="draftStartTime" class="input-control" />
+                </label>
+                <label>
+                  <span>Kết thúc</span>
+                  <input type="time" id="draftEndTime" class="input-control" />
+                </label>
+              </div>
+              <label class="draft-desc-row">
+                <span>Ghi chú</span>
+                <input type="text" id="draftDesc" class="input-control" />
+              </label>
+              <div class="draft-actions">
+                <button type="button" id="confirmSaveCalendarBtn" class="btn btn-primary btn-sm">
+                  Lưu lên Google Calendar
+                </button>
+                <button type="button" id="cancelDraftBtn" class="btn btn-outline btn-sm">
+                  Bỏ qua
+                </button>
+              </div>
+            </div>
+          </article>
+
+          <!-- ĐĂNG NHẬP GOOGLE CALENDAR & DANH SÁCH LỊCH -->
+          <article class="card calendar-card">
+            <div class="card-header">
+              <div>
+                <p class="card-tag">GOOGLE CALENDAR SYNC</p>
+                <h2>Lịch làm việc của bạn</h2>
+              </div>
+              <button type="button" id="refreshCalendarBtn" class="btn btn-outline btn-sm">
+                Làm mới lịch
+              </button>
+            </div>
+
+            <div id="calendarAuthControls" class="auth-controls">
+              <p class="card-desc">
+                Đăng nhập bằng tài khoản Google để xem lịch sắp tới và lưu trực tiếp sự kiện được AI bóc tách.
+              </p>
+
+              <label class="remember-60-label" style="display:inline-flex;align-items:center;gap:6px;font-size:0.9rem;cursor:pointer;">
+                <input type="checkbox" id="remember60DaysCheckbox" checked />
+                <span>Duy trì đăng nhập trong 60 ngày</span>
+              </label>
+
+              <div class="auth-btn-row">
+                <button type="button" id="googleLoginCardBtn" class="btn btn-primary hover-arrow">
+                  <span>Đăng nhập với Google để xem lịch</span>
+                  <span class="arrow">→</span>
+                </button>
+              </div>
+            </div>
+
+            <div id="calendarUserBar" class="user-bar hidden">
+              <span id="loggedUserEmail" class="logged-email"></span>
+              <button type="button" id="googleLogoutBtn" class="btn btn-outline btn-sm">
+                Đăng xuất
+              </button>
+            </div>
+
+            <div id="calendarEventsContainer" class="calendar-events-container">
+              <div class="calendar-empty-state">
+                Chưa đăng nhập tài khoản Google. Bấm <strong>"Đăng nhập với Google để xem lịch"</strong> để kết nối và hiển thị lịch làm việc của riêng bạn.
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <!-- TAB 02: CÔNG VIỆC — GẠO ÔNG DU -->
+      <section id="tab-work" class="tab-panel" aria-label="Công việc Gạo Ông Du">
+        <article class="card">
+          <div class="card-header">
+            <div>
+              <p class="card-tag">THƯƠNG HIỆU CÔNG VIỆC</p>
+              <h2>Gạo Ông Du — Công ty CP Nông nghiệp Gạo Hữu cơ TD Sóc Trăng</h2>
+            </div>
+            <a href="https://gaoongdu.vn" target="_blank" rel="noopener noreferrer" class="btn btn-outline btn-sm">
+              Website gaoongdu.vn ↗
+            </a>
+          </div>
+          <p class="card-desc">
+            Điều phối phân phối kênh hiện đại &amp; truyền thống, quản lý đơn hàng, tồn kho và chuẩn hóa chất lượng sản phẩm gạo hữu cơ, gạo đặc sản Sóc Trăng. Liên hệ công việc: <a href="mailto:info@gaoongdu.vn">info@gaoongdu.vn</a>.
+          </p>
+
+          <div class="price-list-grid">
+            <div class="price-item"><span>GẠO ST25 "HỮU CƠ" 1KG (1 KG)</span><strong>72,000</strong></div>
+            <div class="price-item"><span>GẠO ST25 "HỮU CƠ" 5KG (5 KG)</span><strong>360,000</strong></div>
+            <div class="price-item"><span>GẠO ST25 "TD XANH" 1KG (1 KG)</span><strong>52,000</strong></div>
+            <div class="price-item"><span>GẠO ST25 "TD XANH" 5KG (5 KG)</span><strong>260,000</strong></div>
+            <div class="price-item"><span>GẠO TẤM ST25 "HỮU CƠ" 2KG (1 KG)</span><strong>82,000</strong></div>
+            <div class="price-item"><span>GẠO LÀI THƠM 1KG (1 KG)</span><strong>35,500</strong></div>
+            <div class="price-item"><span>GẠO LÀI THƠM 5KG (5 KG)</span><strong>177,500</strong></div>
+            <div class="price-item"><span>GẠO LỨT DÂU TÂY ĐỎ 1KG (1 KG)</span><strong>112,000</strong></div>
+            <div class="price-item"><span>GẠO LỨT DÂU TÂY TÍM 1KG (1 KG)</span><strong>112,000</strong></div>
+            <div class="price-item"><span>GẠO NẾP SẾU ĐẦU ĐỎ 1KG (1 KG)</span><strong>112,000</strong></div>
+            <div class="price-item"><span>GẠO NẾP CHIM SÂM CẦM 1KG (1 KG)</span><strong>112,000</strong></div>
+            <div class="price-item"><span>GẠO SUMO (1 KG)</span><strong>112,000</strong></div>
+          </div>
+        </article>
+      </section>
+
+      <!-- TAB 03: MINI GAME -->
+      <section id="tab-minigame" class="tab-panel" aria-label="Mini Game">
+        <article class="card">
+          <div class="card-header">
+            <div>
+              <p class="card-tag">GIẢI TRÍ NHANH</p>
+              <h2>Mini Game giải trí</h2>
+            </div>
+          </div>
+          <p class="card-desc">
+            Góc thư giãn nhanh giữa giờ làm việc (Cờ Caro, Rắn săn mồi, Sudoku).
+          </p>
+          <div id="minigameContainer" class="minigame-container"></div>
+        </article>
+      </section>
     </div>
   </main>
 
   <footer class="site-footer">
-    <div class="container footer-top">
-      <div class="footer-brand-col">
-        <div class="footer-logo">
-          <span class="brand-mark">DHP</span>
-          <span class="brand-name">Đinh Hữu Phúc<span class="brand-dot">.</span></span>
-        </div>
-        <p class="footer-bio">
-          Profile cá nhân. Tích hợp trợ lý AI sắp xếp lịch làm việc theo tài khoản Google và khu vực giải trí nhẹ nhàng.
-        </p>
-      </div>
-
-      <div class="footer-links-col">
-        <h4 class="footer-heading">Điều hướng</h4>
-        <ul class="footer-list">
-          <li><button type="button" class="footer-nav-link" data-tab="about">01 / Thông tin cá nhân</button></li>
-          <li><button type="button" class="footer-nav-link" data-tab="work">02 / Công việc hiện tại</button></li>
-          <li><button type="button" class="footer-nav-link" data-tab="minigame">03 / Mini Game giải trí</button></li>
-        </ul>
-      </div>
-
-      <div class="footer-links-col">
-        <h4 class="footer-heading">Kết nối nhanh</h4>
-        <ul class="footer-list">
-          <li><a href="https://zalo.me/0983533945" target="_blank" rel="noopener noreferrer">Nhắn tin qua Zalo</a></li>
-          <li><a href="mailto:contact@gaoongdu.vn">dhphuc2212@dinhhuuphuc.com</a></li>
-          <li><button type="button" id="footerVcardBtn" class="footer-nav-link">Lưu danh bạ (.vcf)</button></li>
-          <li><button type="button" id="footerTrollBtn" class="footer-nav-link text-danger-soft">Góc thư giãn bất ngờ</button></li>
-        </ul>
-      </div>
-    </div>
-
-    <div class="container footer-bottom">
-      <p>© 2026 Đinh Hữu Phúc.</p>
-      <p class="footer-loc">Hòa Bình, TP. Hồ Chí Minh</p>
+    <div class="container footer-inner">
+      <p>© 2026 <strong>Đinh Hữu Phúc</strong> — dinhhuuphuc.com</p>
+      <p class="footer-note">
+        Hòa Bình, TP.HCM • Email: <a href="mailto:dhphuc2212@gmail.com">dhphuc2212@gmail.com</a> •
+        <a href="https://zalo.me/0983533945" target="_blank" rel="noopener noreferrer">Liên hệ qua Zalo</a> •
+        <a href="/privacy">Chính sách quyền riêng tư</a> •
+        <a href="/terms">Điều khoản dịch vụ</a>
+      </p>
     </div>
   </footer>
 
-  <div id="trollModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="trollTitle">
-    <div class="modal-card hover-card">
-      <div class="modal-badge">CẢNH BÁO TÒ MÒ</div>
-      <h3 id="trollTitle">Bị bắt quả tang rồi nhé!</h3>
-      <p id="trollMessage">
-        Làm gì có ảnh nóng nào ở đây đâu! Quay lại trò chuyện với AI hoặc chơi thử ván Cờ Caro, Rắn săn mồi nhé.
-      </p>
-      <div class="modal-actions">
-        <button type="button" id="closeTrollBtn" class="btn btn-primary hover-arrow">
-          <span>Đã hiểu, quay lại</span>
-          <span class="arrow">→</span>
-        </button>
-      </div>
-    </div>
-  </div>
+  <div id="toastContainer" class="toast-container" aria-live="polite"></div>
 
-  <div id="toastNotice" class="toast-notice" role="status" aria-live="polite"></div>
-
-  <script src="./js/work.js"></script>
-  <script src="./js/calendar.js"></script>
-  <script src="./js/chat.js"></script>
-  <script src="./js/caro.js"></script>
-  <script src="./js/snake.js"></script>
-  <script src="./js/sudoku.js"></script>
-  <script src="./js/app.js"></script>
+  <script src="js/app.js"></script>
+  <script src="js/calendar.js"></script>
+  <script src="js/chat.js"></script>
+  <script src="js/minigame.js"></script>
 </body>
 </html>
