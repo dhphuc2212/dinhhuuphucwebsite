@@ -3,8 +3,8 @@ window.GoogleCalendarManager = (function () {
   const SCOPES = "https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/userinfo.email";
 
   let accessToken = sessionStorage.getItem("dhp_gcal_token") || "";
-  let userEmail = sessionStorage.getItem("dhp_gcal_email") || "";
-  let expiresAtMs = Number(sessionStorage.getItem("dhp_gcal_exp") || "0") || 0;
+  let userEmail = localStorage.getItem("dhp_gcal_email") || "";
+  let expiresAtMs = Number(localStorage.getItem("dhp_gcal_exp") || "0") || 0;
   let refreshTimer = null;
   let ongoingRefreshPromise = null;
 
@@ -35,14 +35,14 @@ window.GoogleCalendarManager = (function () {
         sessionStorage.removeItem("dhp_gcal_token");
       }
       if (userEmail) {
-        sessionStorage.setItem("dhp_gcal_email", userEmail);
+        localStorage.setItem("dhp_gcal_email", userEmail);
       } else {
-        sessionStorage.removeItem("dhp_gcal_email");
+        localStorage.removeItem("dhp_gcal_email");
       }
       if (expiresAtMs) {
-        sessionStorage.setItem("dhp_gcal_exp", String(expiresAtMs));
+        localStorage.setItem("dhp_gcal_exp", String(expiresAtMs));
       } else {
-        sessionStorage.removeItem("dhp_gcal_exp");
+        localStorage.removeItem("dhp_gcal_exp");
       }
     } catch {}
   }
@@ -65,7 +65,10 @@ window.GoogleCalendarManager = (function () {
 
     ongoingRefreshPromise = (async () => {
       try {
-        const res = await fetch("/api/auth/refresh", { credentials: "include" });
+        const res = await fetch("/api/auth/refresh", {
+          credentials: "include",
+          cache: "no-store"
+        });
         if (!res.ok) return null;
         const data = await res.json();
 
@@ -84,13 +87,11 @@ window.GoogleCalendarManager = (function () {
         }
       } catch {}
 
-      if (!silent) {
-        accessToken = "";
-        userEmail = "";
-        expiresAtMs = 0;
-        persistCache();
-        syncUI();
-      }
+      accessToken = "";
+      userEmail = "";
+      expiresAtMs = 0;
+      persistCache();
+      syncUI();
       return null;
     })();
 
@@ -153,7 +154,11 @@ window.GoogleCalendarManager = (function () {
     syncUI();
 
     try {
-      await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
+      await fetch("/api/auth/logout", {
+        method: "POST",
+        credentials: "include",
+        cache: "no-store"
+      });
     } catch {}
 
     notify("Đã đăng xuất Google Calendar.");
@@ -165,8 +170,9 @@ window.GoogleCalendarManager = (function () {
     const userBar = document.getElementById("calendarUserBar");
     const emailLabel = document.getElementById("loggedUserEmail");
     const container = document.getElementById("calendarEventsContainer");
+    const isLoggedIn = Boolean(accessToken || (userEmail && expiresAtMs > Date.now()));
 
-    if (accessToken) {
+    if (isLoggedIn) {
       if (headerArea) {
         headerArea.innerHTML = `
           <span class="status-pill">${escapeHtml(userEmail || "Đã đăng nhập")}</span>
@@ -349,7 +355,7 @@ window.GoogleCalendarManager = (function () {
     return `${m[1].padStart(2, "0")}:${m[2]}`;
   }
 
- async function createEvent(scheduleOrTitle, dateArg, startTimeArg, endTimeArg, descArg) {
+  async function createEvent(scheduleOrTitle, dateArg, startTimeArg, endTimeArg, descArg) {
     if (!accessToken) {
       await refreshSession({ silent: true, reload: false });
     }
