@@ -14,6 +14,14 @@ window.GoogleCalendarManager = (function () {
     }
   }
 
+  function escapeHtml(str = "") {
+    return String(str)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
   function getRemember60() {
     const cb = document.getElementById("remember60DaysCheckbox");
     return cb ? Boolean(cb.checked) : true;
@@ -161,7 +169,7 @@ window.GoogleCalendarManager = (function () {
     if (accessToken) {
       if (headerArea) {
         headerArea.innerHTML = `
-          <span class="status-pill">${userEmail || "Đã đăng nhập"}</span>
+          <span class="status-pill">${escapeHtml(userEmail || "Đã đăng nhập")}</span>
           <button type="button" id="headerLogoutBtn" class="btn btn-outline btn-sm">
             Đăng xuất
           </button>`;
@@ -195,6 +203,56 @@ window.GoogleCalendarManager = (function () {
     }
   }
 
+  async function deleteEvent(eventId, title = "") {
+    if (!eventId) return false;
+    if (!accessToken) {
+      await refreshSession({ silent: true, reload: false });
+    }
+    if (!accessToken) {
+      notify("Bạn cần đăng nhập Google trước khi xóa lịch trình.");
+      return false;
+    }
+
+    const ok = window.confirm(`Xóa lịch trình "${title || "này"}" khỏi Google Calendar?`);
+    if (!ok) return false;
+
+    try {
+      const endpoint = `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(eventId)}`;
+      let res = await fetch(endpoint, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${accessToken}` }
+      });
+
+      if (res.status === 401) {
+        const refreshedToken = await refreshSession({ silent: false, reload: false });
+        if (refreshedToken) {
+          res = await fetch(endpoint, {
+            method: "DELETE",
+            headers: { Authorization: `Bearer ${refreshedToken}` }
+          });
+        }
+      }
+
+      if (res.status === 204 || res.ok) {
+        notify("Đã xóa lịch trình khỏi Google Calendar.");
+        await loadEvents({ skipRefresh: true });
+        return true;
+      }
+
+      const errData = await res.json().catch(() => ({}));
+      const reason = errData?.error?.message || "";
+      if (reason.toLowerCase().includes("birthday") || res.status === 403 || res.status === 400) {
+        notify("Không thể xóa sự kiện sinh nhật đồng bộ tự động từ Danh bạ Google.");
+      } else {
+        notify(`Không thể xóa lịch trình (${res.status}).`);
+      }
+      return false;
+    } catch {
+      notify("Lỗi mạng khi xóa lịch trình.");
+      return false;
+    }
+  }
+
   async function loadEvents({ skipRefresh = false } = {}) {
     const container = document.getElementById("calendarEventsContainer");
     if (!container) return;
@@ -212,7 +270,7 @@ window.GoogleCalendarManager = (function () {
 
       const url = new URL("https://www.googleapis.com/calendar/v3/calendars/primary/events");
       url.searchParams.set("timeMin", timeMin.toISOString());
-      url.searchParams.set("maxResults", "12");
+      url.searchParams.set("maxResults", "15");
       url.searchParams.set("singleEvents", "true");
       url.searchParams.set("orderBy", "startTime");
 
@@ -253,19 +311,42 @@ window.GoogleCalendarManager = (function () {
                 minute: "2-digit"
               })
             : startRaw;
+          const canDelete = ev.eventType !== "birthday";
+          const safeTitle = escapeHtml(ev.summary || "(Không có tiêu đề)");
+          const safeId = escapeHtml(ev.id || "");
 
           return `
-            <article class="event-card">
-              <div class="event-time">${formattedTime}</div>
-              <div class="event-title">${ev.summary || "(Không có tiêu đề)"}</div>
-              ${ev.description ? `<div class="event-desc">${ev.description}</div>` : ""}
+            <article class="event-card" style="position:relative;">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+                <div class="event-time">${escapeHtml(formattedTime)}</div>
+                ${
+                  canDelete
+                    ? `<button type="button" class="btn btn-outline btn-sm delete-event-btn" data-event-id="${safeId}" data-event-title="${safeTitle}" style="padding:2px 8px;font-size:0.75rem;">Xóa</button>`
+                    : ""
+                }
+              </div>
+              <div class="event-title">${safeTitle}</div>
+              ${ev.description ? `<div class="event-desc">${escapeHtml(ev.description)}</div>` : ""}
             </article>
           `;
         })
         .join("");
+
+      container.querySelectorAll(".delete-event-btn").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          deleteEvent(btn.dataset.eventId, btn.dataset.eventTitle);
+        });
+      });
     } catch {
       container.innerHTML = `<div class="calendar-empty-state">Không thể tải sự kiện lúc này. Bạn thử bấm Làm mới lịch nhé.</div>`;
     }
+  }
+
+  function normalizeTime(t, fallback) {
+    if (!t || typeof t !== "string") return fallback;
+    const m = t.trim().match(/^(\d{1,2}):(\d{2})/);
+    if (!m) return fallback;
+    return `${m[1].padStart(2, "0")}:${m[2]}`;
   }
 
   async function createEvent(schedule) {
@@ -278,22 +359,29 @@ window.GoogleCalendarManager = (function () {
       return false;
     }
 
-    const startDateTime = `${schedule.date}T${schedule.startTime}:00+07:00`;
-    const endDateTime = `${schedule.date}T${schedule.endTime}:00+07:00`;
+    const startDate = schedule.date || new Date().toISOString().slice(0, 10);
+    const endDate = schedule.endDate || startDate;
+    const startTime = normalizeTime(schedule.startTime, "09:00");
+    const endTime = normalizeTime(schedule.endTime, "10:00");
+
+    const startDateTime = `${startDate}T${startTime}:00+07:00`;
+    const endDateTime = `${endDate}T${endTime}:00+07:00`;
 
     try {
+      const payload = {
+        summary: schedule.title || "Lịch làm việc",
+        description: schedule.description || "Tạo tự động từ Trợ lý AI trên dinhhuuphuc.com",
+        start: { dateTime: startDateTime, timeZone: "Asia/Ho_Chi_Minh" },
+        end: { dateTime: endDateTime, timeZone: "Asia/Ho_Chi_Minh" }
+      };
+
       let res = await fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${accessToken}`,
           "Content-Type": "application/json"
         },
-        body: JSON.stringify({
-          summary: schedule.title,
-          description: schedule.description || "Tạo tự động từ Trợ lý AI trên dinhhuuphuc.com",
-          start: { dateTime: startDateTime, timeZone: "Asia/Ho_Chi_Minh" },
-          end: { dateTime: endDateTime, timeZone: "Asia/Ho_Chi_Minh" }
-        })
+        body: JSON.stringify(payload)
       });
 
       if (res.status === 401) {
@@ -305,23 +393,19 @@ window.GoogleCalendarManager = (function () {
               Authorization: `Bearer ${refreshedToken}`,
               "Content-Type": "application/json"
             },
-            body: JSON.stringify({
-              summary: schedule.title,
-              description: schedule.description || "Tạo tự động từ Trợ lý AI trên dinhhuuphuc.com",
-              start: { dateTime: startDateTime, timeZone: "Asia/Ho_Chi_Minh" },
-              end: { dateTime: endDateTime, timeZone: "Asia/Ho_Chi_Minh" }
-            })
+            body: JSON.stringify(payload)
           });
         }
       }
 
       if (!res.ok) {
-        notify("Không thể lưu lên Google Calendar. Kiểm tra lại quyền Calendar API.");
+        const err = await res.json().catch(() => ({}));
+        notify(`Không thể lưu lên Google Calendar: ${err?.error?.message || res.status}`);
         return false;
       }
 
       notify("Đã thêm lịch làm việc vào Google Calendar!");
-      await loadEvents();
+      await loadEvents({ skipRefresh: true });
       return true;
     } catch {
       notify("Lỗi mạng khi lưu sự kiện lên Google Calendar.");
@@ -357,6 +441,7 @@ window.GoogleCalendarManager = (function () {
     logout,
     loadEvents,
     createEvent,
+    deleteEvent,
     bindSectionEvents
   };
 })();
