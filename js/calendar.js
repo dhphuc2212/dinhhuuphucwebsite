@@ -102,10 +102,13 @@ window.GoogleCalendarManager = (function () {
       if (event.origin !== window.location.origin) return;
       if (event.data?.type === "DHP_GCAL_AUTH_SUCCESS") {
         window.removeEventListener("message", onMessage);
+        accessToken = event.data.accessToken || "";
         userEmail = event.data.email || "Tài khoản Google";
         expiresAtMs = Number(event.data.expiresAtMs) || 0;
         persistCache();
-        await refreshSession({ silent: false, reload: true });
+        syncUI();
+        scheduleAutoRefresh(event.data.expiresIn || 3600);
+        await loadEvents({ skipRefresh: true });
         notify(
           event.data.remember60
             ? "Đã kết nối Google Calendar (duy trì 60 ngày)!"
