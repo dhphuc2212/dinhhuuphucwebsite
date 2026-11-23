@@ -144,7 +144,12 @@ window.GoogleCalendarManager = (function () {
 
     if (accessToken) {
       if (headerArea) {
-        headerArea.innerHTML = `<span class="status-pill">${userEmail || "Đã đăng nhập"}</span>`;
+        headerArea.innerHTML = `
+          <span class="status-pill">${userEmail || "Đã đăng nhập"}</span>
+          <button type="button" id="headerLogoutBtn" class="btn btn-outline btn-sm">
+            Đăng xuất
+          </button>`;
+        document.getElementById("headerLogoutBtn")?.addEventListener("click", logout);
       }
       if (cardControls) cardControls.classList.add("hidden");
       if (userBar) userBar.classList.remove("hidden");
