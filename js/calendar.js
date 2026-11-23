@@ -6,6 +6,7 @@ window.GoogleCalendarManager = (function () {
   let userEmail = sessionStorage.getItem("dhp_gcal_email") || "";
   let expiresAtMs = Number(sessionStorage.getItem("dhp_gcal_exp") || "0") || 0;
   let refreshTimer = null;
+  let ongoingRefreshPromise = null;
 
   function notify(msg) {
     if (typeof window.showToast === "function") {
@@ -50,34 +51,46 @@ window.GoogleCalendarManager = (function () {
   }
 
   async function refreshSession({ silent = true, reload = false } = {}) {
-    try {
-      const res = await fetch("/api/auth/refresh", { credentials: "include" });
-      if (!res.ok) return null;
-      const data = await res.json();
+    if (ongoingRefreshPromise) {
+      return ongoingRefreshPromise;
+    }
 
-      if (data.authenticated && data.accessToken) {
-        accessToken = data.accessToken;
-        userEmail = data.email || userEmail || "Tài khoản Google";
-        expiresAtMs = Number(data.expiresAtMs) || 0;
+    ongoingRefreshPromise = (async () => {
+      try {
+        const res = await fetch("/api/auth/refresh", { credentials: "include" });
+        if (!res.ok) return null;
+        const data = await res.json();
+
+        if (data.authenticated && data.accessToken) {
+          accessToken = data.accessToken;
+          userEmail = data.email || userEmail || "Tài khoản Google";
+          expiresAtMs = Number(data.expiresAtMs) || 0;
+          persistCache();
+          syncUI();
+          scheduleAutoRefresh(data.expiresIn || 3600);
+
+          if (reload || document.getElementById("calendarEventsContainer")) {
+            await loadEvents({ skipRefresh: true });
+          }
+          return accessToken;
+        }
+      } catch {}
+
+      if (!silent) {
+        accessToken = "";
+        userEmail = "";
+        expiresAtMs = 0;
         persistCache();
         syncUI();
-        scheduleAutoRefresh(data.expiresIn || 3600);
-
-        if (reload || document.getElementById("calendarEventsContainer")) {
-          await loadEvents();
-        }
-        return accessToken;
       }
-    } catch {}
+      return null;
+    })();
 
-    if (!silent) {
-      accessToken = "";
-      userEmail = "";
-      expiresAtMs = 0;
-      persistCache();
-      syncUI();
+    try {
+      return await ongoingRefreshPromise;
+    } finally {
+      ongoingRefreshPromise = null;
     }
-    return null;
   }
 
   function login() {
@@ -179,11 +192,11 @@ window.GoogleCalendarManager = (function () {
     }
   }
 
-  async function loadEvents() {
+  async function loadEvents({ skipRefresh = false } = {}) {
     const container = document.getElementById("calendarEventsContainer");
     if (!container) return;
 
-    if (!accessToken) {
+    if (!accessToken && !skipRefresh) {
       await refreshSession({ silent: true, reload: false });
     }
     if (!accessToken) return;
@@ -317,11 +330,11 @@ window.GoogleCalendarManager = (function () {
     document.getElementById("googleLoginHeaderBtn")?.addEventListener("click", login);
     document.getElementById("googleLoginCardBtn")?.addEventListener("click", login);
     document.getElementById("googleLogoutBtn")?.addEventListener("click", logout);
-    document.getElementById("refreshCalendarBtn")?.addEventListener("click", loadEvents);
+    document.getElementById("refreshCalendarBtn")?.addEventListener("click", () => loadEvents());
     syncUI();
 
     if (accessToken) {
-      loadEvents();
+      loadEvents({ skipRefresh: true });
     }
     refreshSession({ silent: true, reload: true });
   }
