@@ -462,33 +462,7 @@ BẮT BUỘC TRẢ VỀ ĐÚNG ĐỊNH DẠNG JSON THUẦN (không bọc markdow
             );
             const data = await res.json();
             if (!res.ok || data?.error) {
-              lastError = data?.error?.message || `HTTP ${res.status}`;
-              continue;
-            }
-            const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
-            let parsed = { reply: "Xin lỗi, mình chưa thể phản hồi lúc này.", schedule: null };
-            try {
-              parsed = JSON.parse(rawText);
-            } catch {
-              if (rawText) parsed.reply = rawText;
-            }
-            return jsonRes({ reply: parsed.reply || "Đã ghi nhận!", schedule: parsed.schedule || null, model: modelName });
-          } catch (e) {
-            lastError = e?.message || "Timeout";
-          }
-        }
-
-        const timeMatch = message.match(/\b(\d{1,2})\s*(?:h|:|giờ)\s*(\d{2})?\b/i);
-        if (timeMatch) {
-          const hour = timeMatch[1].padStart(2, "0");
-          const minute = (timeMatch[2] || "00").padStart(2, "0");
-          const endHour = String((parseInt(hour, 10) + 1) % 24).padStart(2, "0");
-          const isTomorrow = /ngày mai|mai\b/i.test(message);
-          const targetDate = new Date(todayIso + "T00:00:00");
-          if (isTomorrow) targetDate.setDate(targetDate.getDate() + 1);
-          const dateStr = targetDate.toISOString().slice(0, 10);
-          return jsonRes({
-            reply: `Đã tự động bóc tách lịch lúc ${hour}:${minute} ngày ${dateStr}. Bạn kiểm tra và bấm lưu vào Google Calendar nhé!`,
+              lastError = data?.error?.message || `HTTP ${res.status}`; continue; } const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text \vert{}\vert{} ""; let parsed = { reply: "Xin lỗi, mình chưa thể phản hồi lúc này.", schedule: null }; try { parsed = JSON.parse(rawText); } catch { if (rawText) parsed.reply = rawText; } return jsonRes({ reply: parsed.reply \vert{}\vert{} "Đã ghi nhận!", schedule: parsed.schedule \vert{}\vert{} null, model: modelName }); } catch (e) { lastError = e?.message \vert{}\vert{} "Timeout"; } }  const timeMatch = message.match(/\b(\d{1,2})\s*(?:h\vert{}:\vert{}giờ)\s*(\d{2})?\b/i); if (timeMatch) { const hour = timeMatch[1].padStart(2, "0"); const minute = (timeMatch[2] \vert{}\vert{} "00").padStart(2, "0"); const endHour = String((parseInt(hour, 10) + 1) \% 24).padStart(2, "0"); const isTomorrow = /ngày mai\vert{}mai\b/i.test(message); const targetDate = new Date(todayIso + "T00:00:00"); if (isTomorrow) targetDate.setDate(targetDate.getDate() + 1); const dateStr = targetDate.toISOString().slice(0, 10); return jsonRes({ reply: `Đã tự động bóc tách lịch lúc ${hour}:${minute} ngày ${dateStr}. Bạn kiểm tra và bấm lưu vào Google Calendar nhé!`,
             schedule: {
               title: message,
               date: dateStr,
