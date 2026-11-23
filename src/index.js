@@ -43,7 +43,6 @@ export default {
     const url = new URL(request.url);
     const pathname = url.pathname.replace(/\/+$/, "") || "/";
     const redirectUri = `${url.origin}/api/auth/google/callback`;
-    const isProdDomain = url.hostname.endsWith("dinhhuuphuc.com");
 
     if (pathname === "/api/auth/google/start") {
       const remember60 = url.searchParams.get("remember60") !== "0";
@@ -74,17 +73,7 @@ export default {
       const stateRaw = url.searchParams.get("state") || "";
 
       if (error || !code) {
-        return new Response(
-          `<!doctype html><html><body><script>
-            if (window.opener) {
-              window.opener.postMessage({ type: "DHP_GCAL_AUTH_ERROR", error: ${JSON.stringify(error || "missing_code")} }, "*");
-              window.close();
-            } else {
-              window.location.href = "/?gcal_auth=error";
-            }
-          </script></body></html>`,
-          { status: 200, headers: { "Content-Type": "text/html; charset=UTF-8", "Cache-Control": "no-store" } }
-        );
+        return Response.redirect(`${url.origin}/?gcal_error=${encodeURIComponent(error || "missing_code")}`, 302);
       }
 
       let remember60 = true;
@@ -151,57 +140,25 @@ export default {
       const cookieParts = [
         `${COOKIE_NAME}=${encodeURIComponent(sessionId)}`,
         "Path=/",
-        ...(isProdDomain ? ["Domain=.dinhhuuphuc.com"] : []),
         "HttpOnly",
         "Secure",
         "SameSite=Lax",
         ...(remember60 ? [`Max-Age=${maxAgeSec}`, `Expires=${expiresDate}`] : [])
       ];
 
-      return new Response(
-        `<!doctype html><html><body><script>
-          const payload = {
-            type: "DHP_GCAL_AUTH_SUCCESS",
-            sessionId: ${JSON.stringify(sessionId)},
-            accessToken: ${JSON.stringify(tokenData.access_token)},
-            expiresIn: ${JSON.stringify(expiresIn)},
-            email: ${JSON.stringify(email)},
-            remember60: ${JSON.stringify(remember60)},
-            expiresAtMs: ${JSON.stringify(expiresAtMs)}
-          };
-          if (window.opener && !window.opener.closed) {
-            window.opener.postMessage(payload, window.location.origin);
-            window.close();
-          } else {
-            window.location.href = "/";
-          }
-        </script></body></html>`,
-        {
-          status: 200,
-          headers: {
-            "Content-Type": "text/html; charset=UTF-8",
-            "Cache-Control": "no-store",
-            "Set-Cookie": cookieParts.join("; ")
-          }
+      return new Response(null, {
+        status: 302,
+        headers: {
+          "Location": `${url.origin}/?gcal_ok=1`,
+          "Cache-Control": "no-store",
+          "Set-Cookie": cookieParts.join("; ")
         }
-      );
+      });
     }
 
     if (pathname === "/api/auth/refresh") {
-      if (request.method === "OPTIONS") {
-        return new Response(null, {
-          status: 204,
-          headers: {
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-            "Access-Control-Allow-Headers": "Content-Type, X-Session-Id"
-          }
-        });
-      }
-
       const cookies = parseCookies(request.headers.get("Cookie") || "");
-      const headerSid = (request.headers.get("X-Session-Id") || "").trim();
-      const sid = cookies[COOKIE_NAME] || headerSid;
+      const sid = cookies[COOKIE_NAME];
 
       if (!sid || !env.AUTH_SESSIONS) {
         return jsonRes({ authenticated: false, reason: "no_cookie_or_kv" }, 200);
@@ -218,36 +175,15 @@ export default {
         return jsonRes({ authenticated: false, reason: "session_expired" }, 200);
       }
 
-      const remainingTtl = Math.max(60, Math.floor((sess.expiresAtMs - Date.now()) / 1000));
-      const expiresDate = new Date(sess.expiresAtMs).toUTCString();
-      const setCookieHeader =
-        !cookies[COOKIE_NAME] && headerSid
-          ? {
-              "Set-Cookie": [
-                `${COOKIE_NAME}=${encodeURIComponent(sid)}`,
-                "Path=/",
-                ...(isProdDomain ? ["Domain=.dinhhuuphuc.com"] : []),
-                "HttpOnly",
-                "Secure",
-                "SameSite=Lax",
-                ...(sess.remember60 ? [`Max-Age=${remainingTtl}`, `Expires=${expiresDate}`] : [])
-              ].join("; ")
-            }
-          : {};
-
       if (sess.accessToken && sess.accessExpiresAt && Date.now() < sess.accessExpiresAt - 60000) {
-        return jsonRes(
-          {
-            authenticated: true,
-            accessToken: sess.accessToken,
-            expiresIn: Math.floor((sess.accessExpiresAt - Date.now()) / 1000),
-            email: sess.email || "",
-            remember60: Boolean(sess.remember60),
-            expiresAtMs: sess.expiresAtMs
-          },
-          200,
-          setCookieHeader
-        );
+        return jsonRes({
+          authenticated: true,
+          accessToken: sess.accessToken,
+          expiresIn: Math.floor((sess.accessExpiresAt - Date.now()) / 1000),
+          email: sess.email || "",
+          remember60: Boolean(sess.remember60),
+          expiresAtMs: sess.expiresAtMs
+        });
       }
 
       if (!sess.refreshToken || !env.GOOGLE_CLIENT_SECRET) {
@@ -277,35 +213,30 @@ export default {
         sess.refreshToken = refreshed.refresh_token;
       }
 
+      const remainingTtl = Math.max(60, Math.floor((sess.expiresAtMs - Date.now()) / 1000));
       await env.AUTH_SESSIONS.put(`sess:${sid}`, JSON.stringify(sess), {
         expirationTtl: remainingTtl
       });
 
-      return jsonRes(
-        {
-          authenticated: true,
-          accessToken: sess.accessToken,
-          expiresIn: newExpiresIn,
-          email: sess.email || "",
-          remember60: Boolean(sess.remember60),
-          expiresAtMs: sess.expiresAtMs
-        },
-        200,
-        setCookieHeader
-      );
+      return jsonRes({
+        authenticated: true,
+        accessToken: sess.accessToken,
+        expiresIn: newExpiresIn,
+        email: sess.email || "",
+        remember60: Boolean(sess.remember60),
+        expiresAtMs: sess.expiresAtMs
+      });
     }
 
     if (pathname === "/api/auth/logout") {
       const cookies = parseCookies(request.headers.get("Cookie") || "");
-      const headerSid = (request.headers.get("X-Session-Id") || "").trim();
-      const sid = cookies[COOKIE_NAME] || headerSid;
+      const sid = cookies[COOKIE_NAME];
       if (sid && env.AUTH_SESSIONS) {
         await env.AUTH_SESSIONS.delete(`sess:${sid}`);
       }
       const clearCookie = [
         `${COOKIE_NAME}=`,
         "Path=/",
-        ...(isProdDomain ? ["Domain=.dinhhuuphuc.com"] : []),
         "HttpOnly",
         "Secure",
         "SameSite=Lax",
