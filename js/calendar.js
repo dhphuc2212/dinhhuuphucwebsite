@@ -1,76 +1,138 @@
 window.GoogleCalendarManager = (function () {
-  // [BẠN CẦN ĐIỀN]:
-  // Tạo OAuth 2.0 Client ID (Web application) trên Google Cloud Console (bật Google Calendar API),
-  // khai báo Authorized JavaScript origins là https://dinhhuuphuc.com và https://www.dinhhuuphuc.com,
-  // sau đó dán Client ID của bạn vào chuỗi dưới đây:
   const GOOGLE_CLIENT_ID = "645926964017-6hqgk9jf1umh6qu1tc6vu0ec5c233pta.apps.googleusercontent.com";
   const SCOPES = "https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/userinfo.email";
 
-  let tokenClient = null;
   let accessToken = sessionStorage.getItem("dhp_gcal_token") || "";
   let userEmail = sessionStorage.getItem("dhp_gcal_email") || "";
+  let expiresAtMs = Number(sessionStorage.getItem("dhp_gcal_exp") || "0") || 0;
+  let refreshTimer = null;
 
-  function ensureClient() {
-    if (tokenClient) return true;
-    if (!window.google || !google.accounts || !google.accounts.oauth2) {
-      window.showToast("Thư viện đăng nhập Google đang tải, bạn thử bấm lại sau 1 giây nhé!");
-      return false;
+  function notify(msg) {
+    if (typeof window.showToast === "function") {
+      window.showToast(msg);
     }
-    if (GOOGLE_CLIENT_ID.startsWith("YOUR_GOOGLE_OAUTH_CLIENT_ID")) {
-      window.showToast("Bạn chưa điền GOOGLE_CLIENT_ID trong file js/calendar.js!");
-      return false;
-    }
-
-    tokenClient = google.accounts.oauth2.initTokenClient({
-      client_id: GOOGLE_CLIENT_ID,
-      scope: SCOPES,
-      callback: async (response) => {
-        if (response.error) {
-          window.showToast("Đăng nhập Google không thành công.");
-          return;
-        }
-        accessToken = response.access_token;
-        sessionStorage.setItem("dhp_gcal_token", accessToken);
-        await fetchUserProfile();
-        syncUI();
-        await loadEvents();
-        window.showToast("Đã kết nối Google Calendar!");
-      }
-    });
-    return true;
   }
 
-  async function fetchUserProfile() {
-    if (!accessToken) return;
+  function getRemember60() {
+    const cb = document.getElementById("remember60DaysCheckbox");
+    return cb ? Boolean(cb.checked) : true;
+  }
+
+  function persistCache() {
     try {
-      const res = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
-        headers: { Authorization: `Bearer ${accessToken}` }
-      });
-      if (res.ok) {
-        const data = await res.json();
-        userEmail = data.email || "Tài khoản Google";
-        sessionStorage.setItem("dhp_gcal_email", userEmail);
+      if (accessToken) {
+        sessionStorage.setItem("dhp_gcal_token", accessToken);
+      } else {
+        sessionStorage.removeItem("dhp_gcal_token");
       }
-    } catch {
-      userEmail = "Tài khoản Google";
+      if (userEmail) {
+        sessionStorage.setItem("dhp_gcal_email", userEmail);
+      } else {
+        sessionStorage.removeItem("dhp_gcal_email");
+      }
+      if (expiresAtMs) {
+        sessionStorage.setItem("dhp_gcal_exp", String(expiresAtMs));
+      } else {
+        sessionStorage.removeItem("dhp_gcal_exp");
+      }
+    } catch {}
+  }
+
+  function scheduleAutoRefresh(expiresInSec = 3500) {
+    if (refreshTimer) {
+      clearTimeout(refreshTimer);
+      refreshTimer = null;
     }
+    const delayMs = Math.max(15000, (Number(expiresInSec) - 120) * 1000);
+    refreshTimer = setTimeout(() => {
+      refreshSession({ silent: true });
+    }, delayMs);
+  }
+
+  async function refreshSession({ silent = true, reload = false } = {}) {
+    try {
+      const res = await fetch("/api/auth/refresh", { credentials: "include" });
+      if (!res.ok) return null;
+      const data = await res.json();
+
+      if (data.authenticated && data.accessToken) {
+        accessToken = data.accessToken;
+        userEmail = data.email || userEmail || "Tài khoản Google";
+        expiresAtMs = Number(data.expiresAtMs) || 0;
+        persistCache();
+        syncUI();
+        scheduleAutoRefresh(data.expiresIn || 3600);
+
+        if (reload || document.getElementById("calendarEventsContainer")) {
+          await loadEvents();
+        }
+        return accessToken;
+      }
+    } catch {}
+
+    if (!silent) {
+      accessToken = "";
+      userEmail = "";
+      expiresAtMs = 0;
+      persistCache();
+      syncUI();
+    }
+    return null;
   }
 
   function login() {
-    if (!ensureClient()) return;
-    tokenClient.requestAccessToken({ prompt: "consent" });
+    const remember60 = getRemember60() ? "1" : "0";
+    const authUrl = `/api/auth/google/start?remember60=${remember60}`;
+    const popup = window.open(authUrl, "dhp_google_auth", "width=520,height=650");
+
+    const onMessage = async (event) => {
+      if (event.origin !== window.location.origin) return;
+      if (event.data?.type === "DHP_GCAL_AUTH_SUCCESS") {
+        window.removeEventListener("message", onMessage);
+        userEmail = event.data.email || "Tài khoản Google";
+        expiresAtMs = Number(event.data.expiresAtMs) || 0;
+        persistCache();
+        await refreshSession({ silent: false, reload: true });
+        notify(
+          event.data.remember60
+            ? "Đã kết nối Google Calendar (duy trì 60 ngày)!"
+            : "Đã kết nối Google Calendar!"
+        );
+      } else if (event.data?.type === "DHP_GCAL_AUTH_ERROR") {
+        window.removeEventListener("message", onMessage);
+        notify("Đăng nhập Google không thành công.");
+      }
+    };
+
+    window.addEventListener("message", onMessage);
+
+    if (!popup) {
+      window.location.href = authUrl;
+    }
   }
 
-  function logout() {
-    if (accessToken && window.google?.accounts?.oauth2) {
-      google.accounts.oauth2.revoke(accessToken, () => {});
+  async function logout() {
+    if (refreshTimer) {
+      clearTimeout(refreshTimer);
+      refreshTimer = null;
     }
+    if (accessToken && window.google?.accounts?.oauth2?.revoke) {
+      try {
+        window.google.accounts.oauth2.revoke(accessToken, () => {});
+      } catch {}
+    }
+
     accessToken = "";
     userEmail = "";
-    sessionStorage.removeItem("dhp_gcal_token");
-    sessionStorage.removeItem("dhp_gcal_email");
+    expiresAtMs = 0;
+    persistCache();
     syncUI();
-    window.showToast("Đã đăng xuất Google Calendar.");
+
+    try {
+      await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
+    } catch {}
+
+    notify("Đã đăng xuất Google Calendar.");
   }
 
   function syncUI() {
@@ -86,7 +148,12 @@ window.GoogleCalendarManager = (function () {
       }
       if (cardControls) cardControls.classList.add("hidden");
       if (userBar) userBar.classList.remove("hidden");
-      if (emailLabel) emailLabel.textContent = userEmail;
+      if (emailLabel) {
+        const expSuffix = expiresAtMs
+          ? ` • Duy trì tới ${new Date(expiresAtMs).toLocaleDateString("vi-VN")}`
+          : "";
+        emailLabel.textContent = (userEmail || "Tài khoản Google") + expSuffix;
+      }
     } else {
       if (headerArea) {
         headerArea.innerHTML = `
@@ -109,7 +176,12 @@ window.GoogleCalendarManager = (function () {
 
   async function loadEvents() {
     const container = document.getElementById("calendarEventsContainer");
-    if (!accessToken || !container) return;
+    if (!container) return;
+
+    if (!accessToken) {
+      await refreshSession({ silent: true, reload: false });
+    }
+    if (!accessToken) return;
 
     container.innerHTML = `<div class="calendar-empty-state">Đang tải lịch làm việc từ Google Calendar...</div>`;
 
@@ -123,14 +195,21 @@ window.GoogleCalendarManager = (function () {
       url.searchParams.set("singleEvents", "true");
       url.searchParams.set("orderBy", "startTime");
 
-      const res = await fetch(url.toString(), {
+      let res = await fetch(url.toString(), {
         headers: { Authorization: `Bearer ${accessToken}` }
       });
 
       if (res.status === 401) {
-        logout();
-        window.showToast("Phiên đăng nhập Google đã hết hạn, vui lòng đăng nhập lại.");
-        return;
+        const refreshedToken = await refreshSession({ silent: false, reload: false });
+        if (refreshedToken) {
+          res = await fetch(url.toString(), {
+            headers: { Authorization: `Bearer ${refreshedToken}` }
+          });
+        } else {
+          logout();
+          notify("Phiên đăng nhập Google đã hết hạn, vui lòng đăng nhập lại.");
+          return;
+        }
       }
 
       const data = await res.json();
@@ -170,7 +249,10 @@ window.GoogleCalendarManager = (function () {
 
   async function createEvent(schedule) {
     if (!accessToken) {
-      window.showToast("Bạn cần đăng nhập Google trước khi lưu sự kiện lên Google Calendar!");
+      await refreshSession({ silent: true, reload: false });
+    }
+    if (!accessToken) {
+      notify("Bạn cần đăng nhập Google trước khi lưu sự kiện lên Google Calendar!");
       login();
       return false;
     }
@@ -179,7 +261,7 @@ window.GoogleCalendarManager = (function () {
     const endDateTime = `${schedule.date}T${schedule.endTime}:00+07:00`;
 
     try {
-      const res = await fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events", {
+      let res = await fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${accessToken}`,
@@ -193,16 +275,35 @@ window.GoogleCalendarManager = (function () {
         })
       });
 
+      if (res.status === 401) {
+        const refreshedToken = await refreshSession({ silent: false, reload: false });
+        if (refreshedToken) {
+          res = await fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${refreshedToken}`,
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              summary: schedule.title,
+              description: schedule.description || "Tạo tự động từ Trợ lý AI trên dinhhuuphuc.com",
+              start: { dateTime: startDateTime, timeZone: "Asia/Ho_Chi_Minh" },
+              end: { dateTime: endDateTime, timeZone: "Asia/Ho_Chi_Minh" }
+            })
+          });
+        }
+      }
+
       if (!res.ok) {
-        window.showToast("Không thể lưu lên Google Calendar. Kiểm tra lại quyền Calendar API.");
+        notify("Không thể lưu lên Google Calendar. Kiểm tra lại quyền Calendar API.");
         return false;
       }
 
-      window.showToast("Đã thêm lịch làm việc vào Google Calendar!");
+      notify("Đã thêm lịch làm việc vào Google Calendar!");
       await loadEvents();
       return true;
     } catch {
-      window.showToast("Lỗi mạng khi lưu sự kiện lên Google Calendar.");
+      notify("Lỗi mạng khi lưu sự kiện lên Google Calendar.");
       return false;
     }
   }
@@ -213,12 +314,25 @@ window.GoogleCalendarManager = (function () {
     document.getElementById("googleLogoutBtn")?.addEventListener("click", logout);
     document.getElementById("refreshCalendarBtn")?.addEventListener("click", loadEvents);
     syncUI();
+
     if (accessToken) {
       loadEvents();
     }
+    refreshSession({ silent: true, reload: true });
+  }
+
+  // Tự động khôi phục phiên 60 ngày ngay khi tải trang
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", () => {
+      refreshSession({ silent: true, reload: false });
+    });
+  } else {
+    refreshSession({ silent: true, reload: false });
   }
 
   return {
+    GOOGLE_CLIENT_ID,
+    SCOPES,
     login,
     logout,
     loadEvents,
