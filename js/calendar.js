@@ -2,6 +2,7 @@ window.GoogleCalendarManager = (function () {
   const GOOGLE_CLIENT_ID = "645926964017-6hqgk9jf1umh6qu1tc6vu0ec5c233pta.apps.googleusercontent.com";
   const SCOPES = "https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/userinfo.email";
 
+  let sessionId = localStorage.getItem("dhp_gcal_sid") || "";
   let accessToken = sessionStorage.getItem("dhp_gcal_token") || "";
   let userEmail = localStorage.getItem("dhp_gcal_email") || "";
   let expiresAtMs = Number(localStorage.getItem("dhp_gcal_exp") || "0") || 0;
@@ -29,6 +30,11 @@ window.GoogleCalendarManager = (function () {
 
   function persistCache() {
     try {
+      if (sessionId) {
+        localStorage.setItem("dhp_gcal_sid", sessionId);
+      } else {
+        localStorage.removeItem("dhp_gcal_sid");
+      }
       if (accessToken) {
         sessionStorage.setItem("dhp_gcal_token", accessToken);
       } else {
@@ -65,9 +71,14 @@ window.GoogleCalendarManager = (function () {
 
     ongoingRefreshPromise = (async () => {
       try {
+        const headers = {};
+        if (sessionId) {
+          headers["X-Session-Id"] = sessionId;
+        }
         const res = await fetch("/api/auth/refresh", {
           credentials: "include",
-          cache: "no-store"
+          cache: "no-store",
+          headers
         });
         if (!res.ok) return null;
         const data = await res.json();
@@ -87,6 +98,7 @@ window.GoogleCalendarManager = (function () {
         }
       } catch {}
 
+      sessionId = "";
       accessToken = "";
       userEmail = "";
       expiresAtMs = 0;
@@ -111,12 +123,14 @@ window.GoogleCalendarManager = (function () {
       if (event.origin !== window.location.origin) return;
       if (event.data?.type === "DHP_GCAL_AUTH_SUCCESS") {
         window.removeEventListener("message", onMessage);
+        sessionId = event.data.sessionId || "";
         accessToken = event.data.accessToken || "";
         userEmail = event.data.email || "Tài khoản Google";
         expiresAtMs = Number(event.data.expiresAtMs) || 0;
         persistCache();
         syncUI();
         scheduleAutoRefresh(event.data.expiresIn || 3600);
+        await refreshSession({ silent: true, reload: false });
         await loadEvents({ skipRefresh: true });
         notify(
           event.data.remember60
@@ -147,6 +161,8 @@ window.GoogleCalendarManager = (function () {
       } catch {}
     }
 
+    const oldSid = sessionId;
+    sessionId = "";
     accessToken = "";
     userEmail = "";
     expiresAtMs = 0;
@@ -157,7 +173,8 @@ window.GoogleCalendarManager = (function () {
       await fetch("/api/auth/logout", {
         method: "POST",
         credentials: "include",
-        cache: "no-store"
+        cache: "no-store",
+        headers: oldSid ? { "X-Session-Id": oldSid } : {}
       });
     } catch {}
 
@@ -170,7 +187,7 @@ window.GoogleCalendarManager = (function () {
     const userBar = document.getElementById("calendarUserBar");
     const emailLabel = document.getElementById("loggedUserEmail");
     const container = document.getElementById("calendarEventsContainer");
-    const isLoggedIn = Boolean(accessToken || (userEmail && expiresAtMs > Date.now()));
+    const isLoggedIn = Boolean(accessToken || (sessionId && expiresAtMs > Date.now()));
 
     if (isLoggedIn) {
       if (headerArea) {
