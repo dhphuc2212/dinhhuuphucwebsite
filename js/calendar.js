@@ -349,7 +349,7 @@ window.GoogleCalendarManager = (function () {
     return `${m[1].padStart(2, "0")}:${m[2]}`;
   }
 
-  async function createEvent(schedule) {
+ async function createEvent(scheduleOrTitle, dateArg, startTimeArg, endTimeArg, descArg) {
     if (!accessToken) {
       await refreshSession({ silent: true, reload: false });
     }
@@ -358,6 +358,17 @@ window.GoogleCalendarManager = (function () {
       login();
       return false;
     }
+
+    const schedule =
+      typeof scheduleOrTitle === "object" && scheduleOrTitle !== null
+        ? scheduleOrTitle
+        : {
+            title: scheduleOrTitle,
+            date: dateArg,
+            startTime: startTimeArg,
+            endTime: endTimeArg,
+            description: descArg
+          };
 
     const startDate = schedule.date || new Date().toISOString().slice(0, 10);
     const endDate = schedule.endDate || startDate;
@@ -400,7 +411,8 @@ window.GoogleCalendarManager = (function () {
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        notify(`Không thể lưu lên Google Calendar: ${err?.error?.message || res.status}`);
+        const msg = err?.error?.message || `HTTP ${res.status}`;
+        notify(`Lỗi Google Calendar: ${msg}`);
         return false;
       }
 
