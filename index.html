@@ -3,43 +3,58 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Đinh Hữu Phúc — Minimalist Portfolio &amp; AI Schedule</title>
-  <meta name="description" content="Trang giới thiệu cá nhân tối giản của Đinh Hữu Phúc — thương mại, phân phối, vận hành và trợ lý AI sắp xếp lịch làm việc." />
+  <title>Đinh Hữu Phúc — Trang cá nhân</title>
+  <meta name="description" content="Trang thông tin cá nhân của Đinh Hữu Phúc — Kết nối trực tiếp, trợ lý AI Gemini và tiện ích giải trí." />
+
+  <!-- Fonts hiện đại hỗ trợ tiếng Việt sắc nét -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="css/style.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet" />
+
+  <!-- Google Identity Services (cho Đăng nhập Google & Google Calendar) -->
   <script src="https://accounts.google.com/gsi/client" async defer></script>
+
+  <!-- Tách riêng từng file CSS -->
+  <link rel="stylesheet" href="./css/style.css" />
+  <link rel="stylesheet" href="./css/chat.css" />
+  <link rel="stylesheet" href="./css/caro.css" />
+  <link rel="stylesheet" href="./css/snake.css" />
+  <link rel="stylesheet" href="./css/sudoku.css" />
 </head>
 <body>
+  <!-- Thanh tiến trình cuộn trên mép màn hình -->
   <div id="scrollProgress" class="scroll-progress"></div>
 
+  <!-- Nền chấm tối giản tươi sáng -->
+  <div class="ambient-bg" aria-hidden="true"></div>
+
+  <!-- HEADER HOÀN CHỈNH (Phong cách Jony gọn gàng) -->
   <header class="site-header">
     <div class="container header-inner">
-      <a href="#about" class="brand" data-tab="about" aria-label="Trang chủ Đinh Hữu Phúc">
-        <span class="brand-mark">ĐHP</span>
-        <span class="brand-text">Đinh Hữu Phúc</span>
+      <a href="#about" class="brand-logo" data-tab="about">
+        <span class="brand-mark">DHP</span>
+        <span class="brand-name">Đinh Hữu Phúc<span class="brand-dot">.</span></span>
       </a>
 
-      <nav class="nav-pill" aria-label="Điều hướng chính">
-        <button type="button" class="nav-btn active" data-tab="about">Cá nhân</button>
-        <button type="button" class="nav-btn" data-tab="work">Công việc</button>
-        <button type="button" class="nav-btn" data-tab="minigame">Mini Game</button>
+      <nav class="main-nav" aria-label="Menu chính">
+        <button type="button" class="nav-btn active" data-tab="about">
+          <span class="nav-num">01</span> Cá nhân
+        </button>
+        <button type="button" class="nav-btn" data-tab="work">
+          <span class="nav-num">02</span> Công việc
+        </button>
+        <button type="button" class="nav-btn" data-tab="minigame">
+          <span class="nav-num">03</span> Mini Game
+        </button>
       </nav>
 
       <div class="header-actions">
-        <label class="remember-60-pill" for="remember60DaysCheckbox" title="Duy trì đăng nhập trong 60 ngày">
-          <input type="checkbox" id="remember60DaysCheckbox" checked />
-          <span>60 ngày</span>
-        </label>
-
         <div id="headerAuthArea" class="header-auth">
           <button type="button" id="googleLoginHeaderBtn" class="btn btn-outline btn-sm hover-arrow">
             <span>Đăng nhập Google</span>
             <span class="arrow">→</span>
           </button>
         </div>
-
         <a href="https://zalo.me/0983533945" target="_blank" rel="noopener noreferrer" class="btn btn-primary btn-sm hover-arrow">
           <span>Liên hệ Zalo</span>
           <span class="arrow">→</span>
@@ -48,43 +63,79 @@
     </div>
   </header>
 
-  <main id="sectionMount" class="section-mount" aria-live="polite">
-    <div class="container">
-      <div class="skeleton-loader">Đang tải nội dung...</div>
+  <!-- VÙNG NẠP NỘI DUNG TỪNG TAB -->
+  <main class="site-main">
+    <div id="sectionMount" class="container section-mount">
+      <div class="skeleton-loader">Đang tải không gian cá nhân...</div>
     </div>
   </main>
 
+  <!-- FOOTER HOÀN CHỈNH -->
   <footer class="site-footer">
-    <div class="container footer-inner">
-      <div class="footer-left">
-        <p class="footer-brand">Đinh Hữu Phúc</p>
-        <p class="footer-meta">
-          Hòa Bình, TP.HCM • Email: <a href="mailto:dhphuc2212@gmail.com">dhphuc2212@gmail.com</a> •
-          <a href="https://zalo.me/0983533945" target="_blank" rel="noopener noreferrer">Zalo</a> •
-          <a href="/privacy">Chính sách quyền riêng tư</a> •
-          <a href="/terms">Điều khoản dịch vụ</a>
+    <div class="container footer-top">
+      <div class="footer-brand-col">
+        <div class="footer-logo">
+          <span class="brand-mark">DHP</span>
+          <span class="brand-name">Đinh Hữu Phúc<span class="brand-dot">.</span></span>
+        </div>
+        <p class="footer-bio">
+          Không gian kết nối cá nhân tại Hòa Bình, TP.HCM. Tích hợp trợ lý AI Gemini sắp xếp lịch làm việc theo tài khoản Google và khu vực giải trí nhẹ nhàng.
         </p>
       </div>
-      <div class="footer-actions">
-        <button type="button" id="footerVcardBtn" class="btn btn-ghost btn-sm">Tải .vcf</button>
-        <button type="button" id="footerTrollBtn" class="btn btn-ghost btn-sm">Góc vui</button>
+
+      <div class="footer-links-col">
+        <h4 class="footer-heading">Điều hướng</h4>
+        <ul class="footer-list">
+          <li><button type="button" class="footer-nav-link" data-tab="about">01 / Thông tin cá nhân</button></li>
+          <li><button type="button" class="footer-nav-link" data-tab="work">02 / Công việc hiện tại</button></li>
+          <li><button type="button" class="footer-nav-link" data-tab="minigame">03 / Mini Game giải trí</button></li>
+        </ul>
       </div>
+
+      <div class="footer-links-col">
+        <h4 class="footer-heading">Kết nối nhanh</h4>
+        <ul class="footer-list">
+          <li><a href="https://zalo.me/0983533945" target="_blank" rel="noopener noreferrer">Nhắn tin qua Zalo</a></li>
+          <li><a href="mailto:contact@gaoongdu.vn">contact@gaoongdu.vn</a></li>
+          <li><button type="button" id="footerVcardBtn" class="footer-nav-link">Lưu danh bạ (.vcf)</button></li>
+          <li><button type="button" id="footerTrollBtn" class="footer-nav-link text-danger-soft">Góc thư giãn bất ngờ</button></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="container footer-bottom">
+      <p>© 2026 Đinh Hữu Phúc. Thiết kế tối giản trên hạ tầng Cloudflare Workers.</p>
+      <p class="footer-loc">Hòa Bình, TP. Hồ Chí Minh</p>
     </div>
   </footer>
 
+  <!-- MODAL TROLL VUI VẺ -->
   <div id="trollModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="trollTitle">
-    <div class="modal-card">
-      <h3 id="trollTitle">Khoan đã, kiểm tra lại lịch chưa?</h3>
-      <p>Làm việc chăm chỉ là tốt, nhưng nhớ chừa thời gian nghỉ ngơi và kiểm tra lịch hẹn trên Google Calendar nhé!</p>
-      <button type="button" id="closeTrollBtn" class="btn btn-primary btn-sm">Đã rõ</button>
+    <div class="modal-card hover-card">
+      <div class="modal-badge">CẢNH BÁO TÒ MÒ</div>
+      <h3 id="trollTitle">Bị bắt quả tang rồi nhé!</h3>
+      <p id="trollMessage">
+        Làm gì có ảnh nóng nào ở đây đâu! Quay lại trò chuyện với AI hoặc chơi thử ván Cờ Caro, Rắn săn mồi nhé.
+      </p>
+      <div class="modal-actions">
+        <button type="button" id="closeTrollBtn" class="btn btn-primary hover-arrow">
+          <span>Đã hiểu, quay lại</span>
+          <span class="arrow">→</span>
+        </button>
+      </div>
     </div>
   </div>
 
+  <!-- TOAST THÔNG BÁO -->
   <div id="toastNotice" class="toast-notice" role="status" aria-live="polite"></div>
 
-  <script src="js/calendar.js"></script>
-  <script src="js/chat.js"></script>
-  <script src="js/minigame.js"></script>
-  <script src="js/app.js"></script>
+  <!-- Tách riêng từng file JS -->
+  <script src="./js/work.js"></script>
+  <script src="./js/calendar.js"></script>
+  <script src="./js/chat.js"></script>
+  <script src="./js/caro.js"></script>
+  <script src="./js/snake.js"></script>
+  <script src="./js/sudoku.js"></script>
+  <script src="./js/app.js"></script>
 </body>
 </html>
