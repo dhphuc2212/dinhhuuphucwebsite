@@ -162,6 +162,7 @@ export default {
         `<!doctype html><html><body><script>
           const payload = {
             type: "DHP_GCAL_AUTH_SUCCESS",
+            sessionId: ${JSON.stringify(sessionId)},
             accessToken: ${JSON.stringify(tokenData.access_token)},
             expiresIn: ${JSON.stringify(expiresIn)},
             email: ${JSON.stringify(email)},
@@ -187,8 +188,21 @@ export default {
     }
 
     if (pathname === "/api/auth/refresh") {
+      if (request.method === "OPTIONS") {
+        return new Response(null, {
+          status: 204,
+          headers: {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type, X-Session-Id"
+          }
+        });
+      }
+
       const cookies = parseCookies(request.headers.get("Cookie") || "");
-      const sid = cookies[COOKIE_NAME];
+      const headerSid = (request.headers.get("X-Session-Id") || "").trim();
+      const sid = cookies[COOKIE_NAME] || headerSid;
+
       if (!sid || !env.AUTH_SESSIONS) {
         return jsonRes({ authenticated: false, reason: "no_cookie_or_kv" }, 200);
       }
@@ -204,15 +218,36 @@ export default {
         return jsonRes({ authenticated: false, reason: "session_expired" }, 200);
       }
 
+      const remainingTtl = Math.max(60, Math.floor((sess.expiresAtMs - Date.now()) / 1000));
+      const expiresDate = new Date(sess.expiresAtMs).toUTCString();
+      const setCookieHeader =
+        !cookies[COOKIE_NAME] && headerSid
+          ? {
+              "Set-Cookie": [
+                `${COOKIE_NAME}=${encodeURIComponent(sid)}`,
+                "Path=/",
+                ...(isProdDomain ? ["Domain=.dinhhuuphuc.com"] : []),
+                "HttpOnly",
+                "Secure",
+                "SameSite=Lax",
+                ...(sess.remember60 ? [`Max-Age=${remainingTtl}`, `Expires=${expiresDate}`] : [])
+              ].join("; ")
+            }
+          : {};
+
       if (sess.accessToken && sess.accessExpiresAt && Date.now() < sess.accessExpiresAt - 60000) {
-        return jsonRes({
-          authenticated: true,
-          accessToken: sess.accessToken,
-          expiresIn: Math.floor((sess.accessExpiresAt - Date.now()) / 1000),
-          email: sess.email || "",
-          remember60: Boolean(sess.remember60),
-          expiresAtMs: sess.expiresAtMs
-        });
+        return jsonRes(
+          {
+            authenticated: true,
+            accessToken: sess.accessToken,
+            expiresIn: Math.floor((sess.accessExpiresAt - Date.now()) / 1000),
+            email: sess.email || "",
+            remember60: Boolean(sess.remember60),
+            expiresAtMs: sess.expiresAtMs
+          },
+          200,
+          setCookieHeader
+        );
       }
 
       if (!sess.refreshToken || !env.GOOGLE_CLIENT_SECRET) {
@@ -242,24 +277,28 @@ export default {
         sess.refreshToken = refreshed.refresh_token;
       }
 
-      const remainingTtl = Math.max(60, Math.floor((sess.expiresAtMs - Date.now()) / 1000));
       await env.AUTH_SESSIONS.put(`sess:${sid}`, JSON.stringify(sess), {
         expirationTtl: remainingTtl
       });
 
-      return jsonRes({
-        authenticated: true,
-        accessToken: sess.accessToken,
-        expiresIn: newExpiresIn,
-        email: sess.email || "",
-        remember60: Boolean(sess.remember60),
-        expiresAtMs: sess.expiresAtMs
-      });
+      return jsonRes(
+        {
+          authenticated: true,
+          accessToken: sess.accessToken,
+          expiresIn: newExpiresIn,
+          email: sess.email || "",
+          remember60: Boolean(sess.remember60),
+          expiresAtMs: sess.expiresAtMs
+        },
+        200,
+        setCookieHeader
+      );
     }
 
     if (pathname === "/api/auth/logout") {
       const cookies = parseCookies(request.headers.get("Cookie") || "");
-      const sid = cookies[COOKIE_NAME];
+      const headerSid = (request.headers.get("X-Session-Id") || "").trim();
+      const sid = cookies[COOKIE_NAME] || headerSid;
       if (sid && env.AUTH_SESSIONS) {
         await env.AUTH_SESSIONS.delete(`sess:${sid}`);
       }
