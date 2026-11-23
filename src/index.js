@@ -12,7 +12,8 @@ function jsonRes(data, status = 200, extraHeaders = {}) {
     status,
     headers: {
       "Content-Type": "application/json",
-      "Access-Control-Allow-Origin": "*",
+      "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+      "Pragma": "no-cache",
       ...extraHeaders
     }
   });
@@ -45,7 +46,7 @@ export default {
     const isProdDomain = url.hostname.endsWith("dinhhuuphuc.com");
 
     if (pathname === "/api/auth/google/start") {
-      const remember60 = url.searchParams.get("remember60") === "1";
+      const remember60 = url.searchParams.get("remember60") !== "0";
       const statePayload = btoa(
         JSON.stringify({
           nonce: randomId(12),
@@ -82,7 +83,7 @@ export default {
               window.location.href = "/?gcal_auth=error";
             }
           </script></body></html>`,
-          { status: 200, headers: { "Content-Type": "text/html; charset=UTF-8" } }
+          { status: 200, headers: { "Content-Type": "text/html; charset=UTF-8", "Cache-Control": "no-store" } }
         );
       }
 
@@ -146,6 +147,7 @@ export default {
         });
       }
 
+      const expiresDate = new Date(expiresAtMs).toUTCString();
       const cookieParts = [
         `${COOKIE_NAME}=${encodeURIComponent(sessionId)}`,
         "Path=/",
@@ -153,7 +155,7 @@ export default {
         "HttpOnly",
         "Secure",
         "SameSite=Lax",
-        ...(remember60 ? [`Max-Age=${maxAgeSec}`] : [])
+        ...(remember60 ? [`Max-Age=${maxAgeSec}`, `Expires=${expiresDate}`] : [])
       ];
 
       return new Response(
@@ -177,6 +179,7 @@ export default {
           status: 200,
           headers: {
             "Content-Type": "text/html; charset=UTF-8",
+            "Cache-Control": "no-store",
             "Set-Cookie": cookieParts.join("; ")
           }
         }
@@ -187,18 +190,18 @@ export default {
       const cookies = parseCookies(request.headers.get("Cookie") || "");
       const sid = cookies[COOKIE_NAME];
       if (!sid || !env.AUTH_SESSIONS) {
-        return jsonRes({ authenticated: false }, 200);
+        return jsonRes({ authenticated: false, reason: "no_cookie_or_kv" }, 200);
       }
 
       const rawSess = await env.AUTH_SESSIONS.get(`sess:${sid}`);
       if (!rawSess) {
-        return jsonRes({ authenticated: false }, 200);
+        return jsonRes({ authenticated: false, reason: "session_not_found" }, 200);
       }
 
       const sess = JSON.parse(rawSess);
       if (sess.expiresAtMs && Date.now() > sess.expiresAtMs) {
         await env.AUTH_SESSIONS.delete(`sess:${sid}`);
-        return jsonRes({ authenticated: false }, 200);
+        return jsonRes({ authenticated: false, reason: "session_expired" }, 200);
       }
 
       if (sess.accessToken && sess.accessExpiresAt && Date.now() < sess.accessExpiresAt - 60000) {
@@ -213,7 +216,7 @@ export default {
       }
 
       if (!sess.refreshToken || !env.GOOGLE_CLIENT_SECRET) {
-        return jsonRes({ authenticated: false }, 200);
+        return jsonRes({ authenticated: false, reason: "missing_refresh_token" }, 200);
       }
 
       const refreshRes = await fetch("https://oauth2.googleapis.com/token", {
@@ -229,12 +232,15 @@ export default {
 
       const refreshed = await refreshRes.json();
       if (!refreshRes.ok || !refreshed.access_token) {
-        return jsonRes({ authenticated: false }, 200);
+        return jsonRes({ authenticated: false, reason: refreshed.error || "refresh_failed" }, 200);
       }
 
       const newExpiresIn = Number(refreshed.expires_in) || 3600;
       sess.accessToken = refreshed.access_token;
       sess.accessExpiresAt = Date.now() + newExpiresIn * 1000;
+      if (refreshed.refresh_token) {
+        sess.refreshToken = refreshed.refresh_token;
+      }
 
       const remainingTtl = Math.max(60, Math.floor((sess.expiresAtMs - Date.now()) / 1000));
       await env.AUTH_SESSIONS.put(`sess:${sid}`, JSON.stringify(sess), {
@@ -264,7 +270,8 @@ export default {
         "HttpOnly",
         "Secure",
         "SameSite=Lax",
-        "Max-Age=0"
+        "Max-Age=0",
+        "Expires=Thu, 01 Jan 1970 00:00:00 GMT"
       ].join("; ");
       return jsonRes({ ok: true }, 200, { "Set-Cookie": clearCookie });
     }
@@ -289,7 +296,7 @@ export default {
 <body>
   <main class="card">
     <h1>Chính sách quyền riêng tư (Privacy Policy)</h1>
-    <div class="meta">Cập nhật lần cuối: 22/11/2026 • Website: dinhhuuphuc.com</div>
+    <div class="meta">Cập nhật lần cuối: 23/11/2026 • Website: dinhhuuphuc.com</div>
     <h2>1. Dữ liệu chúng tôi truy cập</h2>
     <p>Khi bạn chủ động nhấn nút <strong>"Đăng nhập với Google để xem lịch"</strong> trên website <strong>dinhhuuphuc.com</strong>, ứng dụng chỉ yêu cầu các quyền tối thiểu gồm:</p>
     <ul>
@@ -328,7 +335,7 @@ export default {
 <body>
   <main class="card">
     <h1>Điều khoản dịch vụ (Terms of Service)</h1>
-    <div class="meta">Cập nhật lần cuối: 22/11/2026 • Website: dinhhuuphuc.com</div>
+    <div class="meta">Cập nhật lần cuối: 23/11/2026 • Website: dinhhuuphuc.com</div>
     <h2>1. Mục đích sử dụng</h2>
     <p>Website <strong>dinhhuuphuc.com</strong> cung cấp thông tin cá nhân, thông tin sản phẩm Gạo Ông Du, mini-game và công cụ trợ lý AI hỗ trợ sắp xếp lịch làm việc lên Google Calendar cá nhân.</p>
     <h2>2. Trách nhiệm người dùng</h2>
@@ -429,8 +436,8 @@ BẮT BUỘC TRẢ VỀ ĐÚNG ĐỊNH DẠNG JSON THUẦN (không bọc markdow
   "reply": "Câu trả lời tiếng Việt tự nhiên, ngắn gọn, lịch sự cho người dùng",
   "schedule": null hoặc {
     "title": "Tiêu đề ngắn gọn của lịch làm việc",
-    "date": "DD-MM-YYYY",
-    "endDate": "DD-MM-YYYY (bằng date nếu chỉ diễn ra trong 1 ngày, hoặc ngày kết thúc nếu sự kiện kéo dài nhiều ngày)",
+    "date": "YYYY-MM-DD",
+    "endDate": "YYYY-MM-DD (bằng date nếu chỉ diễn ra trong 1 ngày, hoặc ngày kết thúc nếu sự kiện kéo dài nhiều ngày)",
     "startTime": "HH:MM",
     "endTime": "HH:MM",
     "description": "Ghi chú thêm nếu có"
@@ -495,6 +502,7 @@ BẮT BUỘC TRẢ VỀ ĐÚNG ĐỊNH DẠNG JSON THUẦN (không bọc markdow
             schedule: {
               title: message,
               date: dateStr,
+              endDate: dateStr,
               startTime: `${hour}:${minute}`,
               endTime: `${endHour}:${minute}`,
               description: "Tạo nhanh từ trợ lý dinhhuuphuc.com"
