@@ -3,8 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Đinh Hữu Phúc - Profile</title>
-  <meta name="description" content="Website cá nhân Đinh Hữu Phúc (dinhhuuphuc.com) — Trợ lý AI bóc tách lịch làm việc, đồng bộ Google Calendar duy trì 60 ngày và thông tin công việc Gạo Ông Du." />
+  <title>Đinh Hữu Phúc — Minimalist Portfolio &amp; AI Schedule</title>
+  <meta name="description" content="Trang giới thiệu cá nhân tối giản của Đinh Hữu Phúc — thương mại, phân phối, vận hành và trợ lý AI sắp xếp lịch làm việc." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="css/style.css" />
   <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
@@ -13,29 +16,30 @@
 
   <header class="site-header">
     <div class="container header-inner">
-      <a href="/" class="brand-logo" aria-label="Trang chủ Đinh Hữu Phúc">
-        <span class="brand-name">Đinh Hữu Phúc<span class="brand-dot">.</span></span>
+      <a href="#about" class="brand" data-tab="about" aria-label="Trang chủ Đinh Hữu Phúc">
+        <span class="brand-mark">ĐHP</span>
+        <span class="brand-text">Đinh Hữu Phúc</span>
       </a>
 
-      <nav class="main-nav" aria-label="Menu chính">
-        <button type="button" class="nav-btn active" data-tab="about">
-          <span class="nav-num">01</span> Cá nhân
-        </button>
-        <button type="button" class="nav-btn" data-tab="work">
-          <span class="nav-num">02</span> Công việc
-        </button>
-        <button type="button" class="nav-btn" data-tab="minigame">
-          <span class="nav-num">03</span> Mini Game
-        </button>
+      <nav class="nav-pill" aria-label="Điều hướng chính">
+        <button type="button" class="nav-btn active" data-tab="about">Cá nhân</button>
+        <button type="button" class="nav-btn" data-tab="work">Công việc</button>
+        <button type="button" class="nav-btn" data-tab="minigame">Mini Game</button>
       </nav>
 
       <div class="header-actions">
+        <label class="remember-60-pill" for="remember60DaysCheckbox" title="Duy trì đăng nhập trong 60 ngày">
+          <input type="checkbox" id="remember60DaysCheckbox" checked />
+          <span>60 ngày</span>
+        </label>
+
         <div id="headerAuthArea" class="header-auth">
           <button type="button" id="googleLoginHeaderBtn" class="btn btn-outline btn-sm hover-arrow">
             <span>Đăng nhập Google</span>
             <span class="arrow">→</span>
           </button>
         </div>
+
         <a href="https://zalo.me/0983533945" target="_blank" rel="noopener noreferrer" class="btn btn-primary btn-sm hover-arrow">
           <span>Liên hệ Zalo</span>
           <span class="arrow">→</span>
@@ -44,44 +48,43 @@
     </div>
   </header>
 
-  <main class="site-main">
+  <main id="sectionMount" class="section-mount" aria-live="polite">
     <div class="container">
-      <div id="sectionMount" class="section-mount">
-        <div class="skeleton-loader">Đang tải nội dung...</div>
-      </div>
+      <div class="skeleton-loader">Đang tải nội dung...</div>
     </div>
   </main>
 
   <footer class="site-footer">
     <div class="container footer-inner">
-      <p>© 2026 <strong>Đinh Hữu Phúc</strong> — dinhhuuphuc.com</p>
-      <p class="footer-note">
-        Hòa Bình, TP.HCM • Email: <a href="mailto:dhphuc2212@gmail.com">dhphuc2212@gmail.com</a> •
-        <a href="https://zalo.me/0983533945" target="_blank" rel="noopener noreferrer">Liên hệ qua Zalo</a> •
-        <a href="/privacy">Chính sách quyền riêng tư</a> •
-        <a href="/terms">Điều khoản dịch vụ</a>
-      </p>
+      <div class="footer-left">
+        <p class="footer-brand">Đinh Hữu Phúc</p>
+        <p class="footer-meta">
+          Hòa Bình, TP.HCM • Email: <a href="mailto:dhphuc2212@gmail.com">dhphuc2212@gmail.com</a> •
+          <a href="https://zalo.me/0983533945" target="_blank" rel="noopener noreferrer">Zalo</a> •
+          <a href="/privacy">Chính sách quyền riêng tư</a> •
+          <a href="/terms">Điều khoản dịch vụ</a>
+        </p>
+      </div>
       <div class="footer-actions">
-        <button type="button" id="footerVcardBtn" class="btn btn-outline btn-sm">Tải danh bạ (.vcf)</button>
-        <button type="button" id="footerTrollBtn" class="btn btn-outline btn-sm">Góc bất ngờ</button>
+        <button type="button" id="footerVcardBtn" class="btn btn-ghost btn-sm">Tải .vcf</button>
+        <button type="button" id="footerTrollBtn" class="btn btn-ghost btn-sm">Góc vui</button>
       </div>
     </div>
   </footer>
 
-  <div id="trollModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="trollModalTitle">
+  <div id="trollModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="trollTitle">
     <div class="modal-card">
-      <h3 id="trollModalTitle">Bất ngờ nho nhỏ!</h3>
-      <p>Đang làm việc căng thẳng thì nghỉ giải lao vài phút rồi quay lại chiến tiếp nhé!</p>
-      <button type="button" id="closeTrollBtn" class="btn btn-primary btn-sm">Đóng</button>
+      <h3 id="trollTitle">Khoan đã, kiểm tra lại lịch chưa?</h3>
+      <p>Làm việc chăm chỉ là tốt, nhưng nhớ chừa thời gian nghỉ ngơi và kiểm tra lịch hẹn trên Google Calendar nhé!</p>
+      <button type="button" id="closeTrollBtn" class="btn btn-primary btn-sm">Đã rõ</button>
     </div>
   </div>
 
   <div id="toastNotice" class="toast-notice" role="status" aria-live="polite"></div>
 
-  <script src="js/app.js"></script>
   <script src="js/calendar.js"></script>
   <script src="js/chat.js"></script>
-  <script src="js/work.js"></script>
   <script src="js/minigame.js"></script>
+  <script src="js/app.js"></script>
 </body>
 </html>
