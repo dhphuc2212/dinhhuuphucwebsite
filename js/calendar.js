@@ -15,6 +15,7 @@ window.GoogleCalendarManager = (function () {
   let hideBirthdays = true;
   let cachedEvents = [];
   let editingEventId = null;
+  let manualCreateDraft = null; // { date, startTime, endTime } hoặc null
   let checklistState = JSON.parse(localStorage.getItem("dhp_gcal_tasks") || "{}");
   let eventDoneState = JSON.parse(localStorage.getItem("dhp_gcal_done") || "{}");
 
@@ -54,6 +55,44 @@ window.GoogleCalendarManager = (function () {
     } catch {}
   }
 
+  function addOneHour(timeStr = "09:00") {
+    const [hStr, mStr] = String(timeStr).split(":");
+    const h = Math.min(23, (Number(hStr) || 9) + 1);
+    const m = Number(mStr) || 0;
+    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+  }
+
+  function getDefaultSlotForDate(dateStr) {
+    if (dateStr === H.getTodayStr()) {
+      const now = new Date();
+      const nextHour = Math.min(22, now.getHours() + 1);
+      const start = `${String(nextHour).padStart(2, "0")}:00`;
+      return { date: dateStr, startTime: start, endTime: addOneHour(start) };
+    }
+    return { date: dateStr, startTime: "09:00", endTime: "10:00" };
+  }
+
+  function openManualCreate(customStartTime = "") {
+    editingEventId = null;
+    if (customStartTime) {
+      const normStart = H.normalizeTime(customStartTime, "09:00");
+      manualCreateDraft = {
+        date: selectedDateStr,
+        startTime: normStart,
+        endTime: addOneHour(normStart)
+      };
+    } else {
+      manualCreateDraft = getDefaultSlotForDate(selectedDateStr);
+    }
+    renderAgenda().then(() => {
+      const titleInput = document.querySelector(".manual-title-input");
+      if (titleInput) {
+        titleInput.focus();
+        titleInput.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    });
+  }
+
   function scheduleAutoRefresh(expiresInSec = 3500) {
     if (refreshTimer) {
       clearTimeout(refreshTimer);
@@ -68,7 +107,7 @@ window.GoogleCalendarManager = (function () {
   function startLiveClock() {
     if (liveTickTimer) clearInterval(liveTickTimer);
     liveTickTimer = setInterval(() => {
-      if (selectedDateStr === H.getTodayStr() && cachedEvents.length > 0 && !editingEventId) {
+      if (selectedDateStr === H.getTodayStr() && cachedEvents.length > 0 && !editingEventId && !manualCreateDraft) {
         renderAgenda();
       }
     }, 60000);
@@ -147,6 +186,7 @@ window.GoogleCalendarManager = (function () {
     expiresAtMs = 0;
     cachedEvents = [];
     editingEventId = null;
+    manualCreateDraft = null;
     persistCache();
     syncUI();
 
@@ -355,6 +395,39 @@ window.GoogleCalendarManager = (function () {
     ).padStart(2, "0")}`;
   }
 
+  function formatIsoToDmy(isoStr = "") {
+    const m = String(isoStr).match(/^(\d{4})-(\d{2})-(\d{2})/);
+    return m ? `${m[3]}-${m[2]}-${m[1]}` : isoStr;
+  }
+
+  function renderManualCreateBoxHtml() {
+    if (!manualCreateDraft) return "";
+    const draftDate = manualCreateDraft.date || selectedDateStr;
+    return `
+      <div class="dhp-manual-create-box" id="manualCreateBox">
+        <div class="dhp-manual-create-header">
+          <span>➕ Thêm lịch làm việc mới</span>
+          <span class="dhp-date-hint">Ngày: ${H.escapeHtml(formatIsoToDmy(draftDate))}</span>
+        </div>
+        <input type="text" class="dhp-edit-input manual-title-input" placeholder="Nhập tên công việc / sự kiện (VD: Họp kế hoạch Gạo Ông Du)" />
+        <div class="dhp-edit-grid">
+          <input type="date" class="dhp-edit-input manual-date-input" value="${H.escapeHtml(draftDate)}" />
+          <input type="time" class="dhp-edit-input manual-start-input" value="${H.escapeHtml(
+            manualCreateDraft.startTime || "09:00"
+          )}" />
+          <input type="time" class="dhp-edit-input manual-end-input" value="${H.escapeHtml(
+            manualCreateDraft.endTime || "10:00"
+          )}" />
+        </div>
+        <input type="text" class="dhp-edit-input manual-desc-input" placeholder="Ghi chú chi tiết hoặc địa điểm (tùy chọn)" />
+        <div class="dhp-edit-actions">
+          <button type="button" class="btn btn-outline btn-sm cancel-manual-create-btn">Hủy</button>
+          <button type="button" class="btn btn-primary btn-sm save-manual-create-btn">Lưu vào Google Calendar</button>
+        </div>
+      </div>
+    `;
+  }
+
   async function renderAgenda() {
     const container = document.getElementById("calendarEventsContainer");
     if (!container) return;
@@ -397,7 +470,10 @@ window.GoogleCalendarManager = (function () {
             </div>
             ${!isToday ? `<button type="button" class="btn btn-outline btn-sm" id="calTodayBtn">Về hôm nay</button>` : ""}
           </div>
-          <button type="button" class="btn btn-outline btn-sm" id="calNextDayBtn">Ngày mai →</button>
+          <div class="dhp-nav-right">
+            <button type="button" class="btn btn-primary btn-sm" id="calOpenManualCreateBtn">+ Thêm lịch</button>
+            <button type="button" class="btn btn-outline btn-sm" id="calNextDayBtn">Ngày mai →</button>
+          </div>
         </div>
 
         <div class="dhp-sub-toolbar">
@@ -410,6 +486,8 @@ window.GoogleCalendarManager = (function () {
           </div>
           ${weatherInfo ? `<div class="dhp-weather-pill">${H.escapeHtml(weatherInfo.summary)}</div>` : ""}
         </div>
+
+        ${renderManualCreateBoxHtml()}
     `;
 
     if (allDayItems.length > 0) {
@@ -427,8 +505,9 @@ window.GoogleCalendarManager = (function () {
           Không có lịch làm việc theo khung giờ trong ngày <strong>${H.escapeHtml(
             H.formatDisplayDate(selectedDateStr)
           )}</strong>.
-          <div style="margin-top:8px;">
-            <button type="button" class="dhp-quick-add-btn" data-quick-time="09:00">+ Nhắn AI để lên lịch cho ngày này</button>
+          <div class="dhp-empty-actions">
+            <button type="button" class="btn btn-primary btn-sm dhp-manual-empty-btn">+ Thêm lịch thủ công</button>
+            <button type="button" class="dhp-quick-add-btn" data-ai-prompt="1">+ Nhắn AI để lên lịch</button>
           </div>
         </div>
       </div>`;
@@ -685,7 +764,7 @@ window.GoogleCalendarManager = (function () {
     try {
       const payload = {
         summary: schedule.title || "Lịch làm việc",
-        description: schedule.description || "Tạo tự động từ Trợ lý AI trên dinhhuuphuc.com",
+        description: schedule.description || "",
         start: { dateTime: startDateTime, timeZone: "Asia/Ho_Chi_Minh" },
         end: { dateTime: endDateTime, timeZone: "Asia/Ho_Chi_Minh" }
       };
@@ -720,6 +799,7 @@ window.GoogleCalendarManager = (function () {
         return false;
       }
 
+      manualCreateDraft = null;
       selectedDateStr = startDate;
       notify("Đã thêm lịch làm việc vào Google Calendar!");
       await loadEvents({ skipRefresh: true });
@@ -778,6 +858,7 @@ window.GoogleCalendarManager = (function () {
 
     if (e.target.closest("#calPrevDayBtn")) {
       editingEventId = null;
+      manualCreateDraft = null;
       selectedDateStr = H.shiftDateStr(selectedDateStr, -1);
       loadEvents();
       return;
@@ -785,6 +866,7 @@ window.GoogleCalendarManager = (function () {
 
     if (e.target.closest("#calNextDayBtn")) {
       editingEventId = null;
+      manualCreateDraft = null;
       selectedDateStr = H.shiftDateStr(selectedDateStr, 1);
       loadEvents();
       return;
@@ -792,14 +874,73 @@ window.GoogleCalendarManager = (function () {
 
     if (e.target.closest("#calTodayBtn")) {
       editingEventId = null;
+      manualCreateDraft = null;
       selectedDateStr = H.getTodayStr();
       loadEvents();
+      return;
+    }
+
+    // Mở/đóng form thêm lịch thủ công từ nút "+ Thêm lịch" trên thanh công cụ
+    if (e.target.closest("#calOpenManualCreateBtn")) {
+      e.preventDefault();
+      if (manualCreateDraft) {
+        manualCreateDraft = null;
+        renderAgenda();
+      } else {
+        openManualCreate();
+      }
+      return;
+    }
+
+    // Mở form thêm lịch thủ công khi ngày đang trống
+    if (e.target.closest(".dhp-manual-empty-btn")) {
+      e.preventDefault();
+      openManualCreate();
+      return;
+    }
+
+    // Hủy thêm lịch thủ công
+    if (e.target.closest(".cancel-manual-create-btn")) {
+      e.preventDefault();
+      manualCreateDraft = null;
+      renderAgenda();
+      return;
+    }
+
+    // Lưu lịch thủ công mới tạo
+    const saveManualBtn = e.target.closest(".save-manual-create-btn");
+    if (saveManualBtn) {
+      e.preventDefault();
+      const box = saveManualBtn.closest("#manualCreateBox");
+      if (box) {
+        const titleVal = box.querySelector(".manual-title-input")?.value.trim();
+        if (!titleVal) {
+          notify("Vui lòng nhập tên công việc / sự kiện.");
+          box.querySelector(".manual-title-input")?.focus();
+          return;
+        }
+        saveManualBtn.disabled = true;
+        saveManualBtn.textContent = "Đang lưu...";
+        createEvent({
+          title: titleVal,
+          date: box.querySelector(".manual-date-input")?.value || selectedDateStr,
+          startTime: box.querySelector(".manual-start-input")?.value || "09:00",
+          endTime: box.querySelector(".manual-end-input")?.value || "10:00",
+          description: box.querySelector(".manual-desc-input")?.value.trim() || ""
+        }).then((ok) => {
+          if (!ok) {
+            saveManualBtn.disabled = false;
+            saveManualBtn.textContent = "Lưu vào Google Calendar";
+          }
+        });
+      }
       return;
     }
 
     const editBtn = e.target.closest(".edit-event-btn");
     if (editBtn) {
       e.preventDefault();
+      manualCreateDraft = null;
       const targetId = editBtn.dataset.eventId;
       editingEventId = editingEventId === targetId ? null : targetId;
       renderAgenda();
@@ -841,13 +982,16 @@ window.GoogleCalendarManager = (function () {
 
     const quickAddBtn = e.target.closest(".dhp-quick-add-btn");
     if (quickAddBtn) {
-      const timeStr = quickAddBtn.dataset.quickTime || "09:00";
-      const chatInput = document.querySelector("#chatInput, #aiChatInput, .chat-input");
-      if (chatInput) {
-        const displayDmy = H.formatDisplayDate(selectedDateStr);
-        chatInput.value = `Đặt lịch ${displayDmy} lúc ${timeStr}: `;
-        chatInput.focus();
-        chatInput.scrollIntoView({ behavior: "smooth", block: "center" });
+      e.preventDefault();
+      if (quickAddBtn.dataset.aiPrompt === "1") {
+        const chatInput = document.querySelector("#chatInput, #aiChatInput, .chat-input");
+        if (chatInput) {
+          chatInput.value = `Đặt lịch ${formatIsoToDmy(selectedDateStr)} lúc 09:00: `;
+          chatInput.focus();
+          chatInput.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+      } else {
+        openManualCreate(quickAddBtn.dataset.quickTime || "09:00");
       }
       return;
     }
@@ -868,6 +1012,7 @@ window.GoogleCalendarManager = (function () {
   document.addEventListener("change", (e) => {
     if (e.target.id === "calDatePickerInput" && e.target.value) {
       editingEventId = null;
+      manualCreateDraft = null;
       selectedDateStr = e.target.value;
       loadEvents();
       return;
@@ -896,7 +1041,7 @@ window.GoogleCalendarManager = (function () {
     }
   });
 
-async function findMatchingEvent(targetTitle, targetDate) {
+  async function findMatchingEvent(targetTitle, targetDate) {
     const searchDate = targetDate || selectedDateStr || H.getTodayStr();
     if (selectedDateStr !== searchDate) {
       selectedDateStr = searchDate;
