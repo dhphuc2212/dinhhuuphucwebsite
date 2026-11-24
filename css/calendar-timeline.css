@@ -391,3 +391,76 @@
     font-size: 0.78rem;
   }
 }
+/* Checkbox hoàn thành cho từng sự kiện chính */
+.dhp-event-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.dhp-event-done-cb {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent, #0d9488);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.dhp-tl-row.is-done .dhp-card-title {
+  text-decoration: line-through;
+  opacity: 0.65;
+}
+
+.dhp-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+/* Form chỉnh sửa sự kiện ngay tại thẻ */
+.dhp-edit-box {
+  margin-top: 12px;
+  padding: 12px;
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dhp-edit-grid {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 1fr;
+  gap: 8px;
+}
+
+@media (max-width: 640px) {
+  .dhp-edit-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.dhp-edit-input {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 0.86rem;
+  background: #ffffff;
+}
+
+.dhp-edit-input:focus {
+  outline: none;
+  border-color: var(--accent, #0d9488);
+}
+
+.dhp-edit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
