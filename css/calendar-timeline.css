@@ -464,3 +464,58 @@
   gap: 8px;
   margin-top: 4px;
 }
+/* Nhóm nút hành động bên phải thanh điều hướng ngày */
+.dhp-nav-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Khung form thêm lịch thủ công mở trượt đầu timeline */
+.dhp-manual-create-box {
+  margin-bottom: 16px;
+  padding: 16px;
+  background: #f0fdfa;
+  border: 1px solid #99f6e4;
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: 0 4px 12px rgba(13, 148, 136, 0.08);
+  animation: dhpSlideDown 0.2s ease-out;
+}
+
+@keyframes dhpSlideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.dhp-manual-create-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--accent-dark, #0f766e);
+}
+
+.dhp-manual-create-header span.dhp-date-hint {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-secondary, #64748b);
+}
+
+.dhp-empty-actions {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
