@@ -1,182 +1,150 @@
-(function () {
-  function formatIsoToDmy(isoStr = "") {
-    const m = String(isoStr).match(/^(\d{4})-(\d{2})-(\d{2})/);
-    return m ? `${m[3]}-${m[2]}-${m[1]}` : isoStr;
+import { jsonRes } from "./utils.js";
+
+function formatIsoToDmy(isoStr = "") {
+  const m = String(isoStr).match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : isoStr;
+}
+
+function buildSystemPrompt(todayIso, todayDmy, timezone) {
+  return `Bạn là Trợ lý AI thông minh, am hiểu sâu sắc và đa năng trên website cá nhân của Đinh Hữu Phúc (dinhhuuphuc.com).
+Ngày hiện tại của người dùng là: ${todayDmy} (tức ${todayIso}, múi giờ: ${timezone}, +07:00).
+
+1. VAI TRÒ & KHẢ NĂNG:
+- Bạn vừa là Trợ lý sắp xếp lịch làm việc Google Calendar thông minh, vừa là Trợ lý phân tích & giải đáp mọi câu hỏi (kinh doanh, công nghệ, sức khỏe, đời sống, tính toán giá bán/chiết khấu, lập kế hoạch...).
+- Khi người dùng đặt câu hỏi hoặc trò chuyện thông thường (không phải đặt lịch): trả lời sâu sắc, rõ ràng, tự nhiên bằng tiếng Việt và đặt "schedule": null.
+- Khi người dùng nhắn nội dung có ý định đặt lịch, nhắc việc, tham gia sự kiện, hẹn giờ: bóc tách chính xác thông tin sự kiện vào "schedule", đồng thời trong "reply" xác nhận rõ tên sự kiện, ngày (dạng DD-MM-YYYY) và khung giờ bắt đầu - kết thúc.
+
+2. QUY TẮC ĐỊNH DẠNG NGÀY THÁNG:
+- Trong "reply" và "description": BẮT BUỘC viết ngày dạng DD-MM-YYYY (ví dụ: 24-11-2026). Không viết ngược YYYY-MM-DD trong văn bản trả lời.
+- Riêng trong "schedule.date" và "schedule.endDate": giữ chuẩn kỹ thuật YYYY-MM-DD (ví dụ: "2026-11-24") để lưu được lên Google Calendar.
+
+3. QUY TẮC BÓC TÁCH LỊCH ("schedule"):
+- "title": Chỉ lấy tên gọn gàng của sự kiện (loại bỏ các cụm từ thừa như "Hôm nay từ 8h - 22h:", "Đặt lịch", "Ngày 24-11-2026...").
+- "date": Ngày bắt đầu chuẩn YYYY-MM-DD (tính dựa trên ngày hiện tại ${todayIso}).
+- "endDate": Ngày kết thúc chuẩn YYYY-MM-DD (bằng "date" nếu diễn ra trong 1 ngày).
+- "startTime": Giờ bắt đầu chuẩn 24h HH:MM (ví dụ "08:00").
+- "endTime": Giờ kết thúc chuẩn 24h HH:MM (ví dụ "22:00". Nếu không nói giờ kết thúc thì cộng 1 tiếng sau startTime).
+- "description": Ghi chú chi tiết, địa điểm hoặc lưu ý chuẩn bị.
+
+4. THÔNG TIN VỀ ĐINH HỮU PHÚC & CÔNG VIỆC:
+- Họ tên: Đinh Hữu Phúc • Khu vực: Phường Hòa Bình, TP.HCM.
+- Email cá nhân: dhphuc2212@dinhhuuphuc.com và dhphuc2212@gmail.com.
+- Liên hệ Zalo: https://zalo.me/0983533945 (không viết số điện thoại thô, hướng dẫn bấm nút Liên hệ qua Zalo).
+- Thương hiệu công việc: Gạo Ông Du (gaoongdu.vn, email: info@gaoongdu.vn) thuộc Công ty CP Nông nghiệp Gạo Hữu cơ TD Sóc Trăng.
+- Bảng giá Gạo Ông Du:
+  1. GẠO ST25 "HỮU CƠ" 1KG — 72,000đ | 5KG — 360,000đ
+  2. GẠO ST25 "TD XANH" 1KG — 52,000đ | 5KG — 260,000đ
+  3. GẠO TẤM ST25 "HỮU CƠ" 2KG — 82,000đ
+  4. GẠO LÀI THƠM 1KG — 35,500đ | 5KG — 177,500đ
+  5. GẠO LỨT DÂU TÂY ĐỎ 1KG — 112,000đ
+  6. GẠO LỨT DÂU TÂY TÍM 1KG — 112,000đ
+  7. GẠO NẾP SẾU ĐẦU ĐỎ 1KG — 112,000đ
+  8. GẠO NẾP CHIM SÂM CẦM 1KG — 112,000đ
+  9. GẠO SUMO (1 KG) — 112,000đ
+
+CHỈ TRẢ VỀ ĐÚNG MỘT KHỐI JSON DUY NHẤT (không giải thích ngoài JSON, không bọc markdown):
+{"reply":"Câu trả lời tiếng Việt chi tiết","schedule":null}`;
+}
+
+export async function handleChatRoutes(pathname, request, env) {
+  if (pathname === "/api/models") {
+    return jsonRes({
+      provider: "Cloudflare Workers AI",
+      ready: Boolean(env.AI),
+      models: [
+        "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+        "@cf/google/gemma-3-12b-it"
+      ]
+    });
   }
 
-  function escapeHtml(str = "") {
-    return String(str)
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;");
-  }
-
-  function getChatElements() {
-    const mount = document.getElementById("sectionMount") || document;
-    const form =
-      mount.querySelector("#chatForm, #aiChatForm, form.chat-form, form.ai-form") ||
-      mount.querySelector("form");
-    const input =
-      mount.querySelector("#chatInput, #aiInput, input[type='text'], textarea") ||
-      (form ? form.querySelector("input, textarea") : null);
-    const sendBtn =
-      mount.querySelector("#chatSendBtn, #sendChatBtn, button[type='submit']") ||
-      (form ? form.querySelector("button") : null);
-    const messagesBox = mount.querySelector(
-      "#chatMessages, #aiMessages, .chat-messages, .ai-messages, .chat-body"
-    );
-    return { form, input, sendBtn, messagesBox };
-  }
-
-  function appendMessage(messagesBox, role, text, schedule = null) {
-    if (!messagesBox) return;
-    const msgDiv = document.createElement("div");
-    msgDiv.className = role === "user" ? "chat-msg user-msg" : "chat-msg ai-msg";
-
-    let html = `<div class="msg-bubble">${escapeHtml(text).replace(/\n/g, "<br>")}</div>`;
-
-    if (schedule && schedule.title && schedule.date) {
-      const displayDate = formatIsoToDmy(schedule.date);
-      const timeRange = `${schedule.startTime || "08:00"} - ${schedule.endTime || "09:00"}`;
-      html += `
-        <div class="schedule-preview-card" style="margin-top:8px;padding:10px 12px;border-radius:10px;background:#f0fdf4;border:1px solid #bbf7d0;color:#14532d;font-size:0.9rem;">
-          <div style="font-weight:700;margin-bottom:4px;">📅 Lịch nhận diện: ${escapeHtml(schedule.title)}</div>
-          <div>🗓 Ngày: <strong>${escapeHtml(displayDate)}</strong> • ⏰ <strong>${escapeHtml(timeRange)}</strong></div>
-          <button type="button" class="btn btn-primary btn-sm save-gcal-btn" style="margin-top:8px;">
-            + Lưu vào Google Calendar
-          </button>
-        </div>
-      `;
+  if (pathname === "/api/chat") {
+    if (request.method === "OPTIONS") {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "POST, OPTIONS",
+          "Access-Control-Allow-Headers": "Content-Type"
+        }
+      });
     }
-
-    msgDiv.innerHTML = html;
-    messagesBox.appendChild(msgDiv);
-    messagesBox.scrollTop = messagesBox.scrollHeight;
-
-    if (schedule) {
-      const saveBtn = msgDiv.querySelector(".save-gcal-btn");
-      if (saveBtn) {
-        saveBtn.addEventListener("click", async () => {
-          saveBtn.disabled = true;
-          saveBtn.textContent = "Đang lưu...";
-          try {
-            if (typeof window.createGoogleCalendarEvent === "function") {
-              await window.createGoogleCalendarEvent(schedule);
-              saveBtn.textContent = "✓ Đã lưu vào Google Calendar";
-            } else if (typeof window.addEventToGoogleCalendar === "function") {
-              await window.addEventToGoogleCalendar(schedule);
-              saveBtn.textContent = "✓ Đã lưu vào Google Calendar";
-            } else {
-              window.dispatchEvent(new CustomEvent("dhp:save-schedule", { detail: schedule }));
-              saveBtn.textContent = "✓ Đã gửi yêu cầu lưu lịch";
-            }
-          } catch (err) {
-            saveBtn.disabled = false;
-            saveBtn.textContent = "Thử lưu lại";
-          }
-        });
-      }
+    if (request.method !== "POST") {
+      return jsonRes({ error: "Method Not Allowed" }, 405);
     }
-  }
-
-  let isSending = false;
-
-  async function handleSendMessage(e) {
-    if (e) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-    if (isSending) return;
-
-    const { input, sendBtn, messagesBox } = getChatElements();
-    if (!input) return;
-
-    const message = input.value.trim();
-    if (!message) return;
-
-    isSending = true;
-    input.value = "";
-    const oldBtnHtml = sendBtn ? sendBtn.innerHTML : "";
-    if (sendBtn) {
-      sendBtn.disabled = true;
-      sendBtn.textContent = "Đang...";
-    }
-
-    appendMessage(messagesBox, "user", message);
 
     try {
-      const now = new Date();
-      const todayIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+      const body = await request.json();
+      const message = (body.message || "").toString().trim();
+      const todayIso = (body.today || new Date().toISOString().slice(0, 10)).toString();
+      const todayDmy = formatIsoToDmy(todayIso);
+      const timezone = (body.timezone || "Asia/Ho_Chi_Minh").toString();
 
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message,
-          today: todayIso,
-          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Ho_Chi_Minh"
-        })
-      });
-
-      const data = await res.json();
-      appendMessage(
-        messagesBox,
-        "ai",
-        data.reply || "Xin lỗi, trợ lý AI chưa thể phản hồi lúc này.",
-        data.schedule || null
-      );
-    } catch {
-      appendMessage(messagesBox, "ai", "Không thể kết nối tới máy chủ AI. Bạn thử lại nhé!");
-    } finally {
-      isSending = false;
-      if (sendBtn) {
-        sendBtn.disabled = false;
-        sendBtn.innerHTML = oldBtnHtml || "Gửi →";
+      if (!message) return jsonRes({ error: "Vui lòng nhập nội dung." }, 400);
+      if (!env.AI) {
+        return jsonRes({
+          reply: "Chưa bật binding AI trong wrangler.jsonc. Bạn kiểm tra lại cấu hình nhé!",
+          schedule: null
+        });
       }
-      input.focus();
+
+      const systemPrompt = buildSystemPrompt(todayIso, todayDmy, timezone);
+      const models = [
+        "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+        "@cf/google/gemma-3-12b-it"
+      ];
+
+      let lastError = "";
+      for (const modelName of models) {
+        try {
+          const result = await env.AI.run(modelName, {
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: message }
+            ],
+            temperature: 0.4,
+            max_tokens: 1024
+          });
+
+          const rawText = (result?.response || "").toString().trim();
+          let parsed = { reply: rawText || "Đã ghi nhận!", schedule: null };
+
+          const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            try {
+              const obj = JSON.parse(jsonMatch[0]);
+              if (obj && typeof obj.reply === "string") {
+                parsed = {
+                  reply: obj.reply,
+                  schedule: obj.schedule || null
+                };
+              }
+            } catch {}
+          }
+
+          const normalizedReply = parsed.reply.replace(
+            /\b(\d{4})-(\d{2})-(\d{2})\b/g,
+            "$3-$2-$1"
+          );
+
+          return jsonRes({
+            reply: normalizedReply,
+            schedule: parsed.schedule,
+            model: modelName
+          });
+        } catch (e) {
+          lastError = e?.message || "Lỗi Workers AI";
+        }
+      }
+
+      return jsonRes({
+        reply: `Hệ thống AI đang bận (${lastError}). Bạn thử gửi lại nhé!`,
+        schedule: null
+      });
+    } catch {
+      return jsonRes({ reply: "Có lỗi kết nối tới hệ thống AI.", schedule: null });
     }
   }
 
-  // Chặn mọi hành vi submit form gây reload trang trên toàn bộ khu vực giao diện
-  document.addEventListener(
-    "submit",
-    (e) => {
-      const mount = document.getElementById("sectionMount");
-      if (mount && mount.contains(e.target)) {
-        e.preventDefault();
-        e.stopPropagation();
-        handleSendMessage(e);
-      }
-    },
-    true
-  );
-
-  // Bắt sự kiện click vào nút Gửi dù tab được render động
-  document.addEventListener("click", (e) => {
-    const btn = e.target.closest("button");
-    if (!btn) return;
-    const { sendBtn } = getChatElements();
-    if (sendBtn && btn === sendBtn) {
-      e.preventDefault();
-      handleSendMessage(e);
-    }
-  });
-
-  // Bắt phím Enter trong ô nhập chat
-  document.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      const { input } = getChatElements();
-      if (input && document.activeElement === input) {
-        e.preventDefault();
-        handleSendMessage(e);
-      }
-    }
-  });
-
-  window.initChatUI = function () {
-    const { form, sendBtn } = getChatElements();
-    if (form) form.setAttribute("onsubmit", "event.preventDefault(); return false;");
-    if (sendBtn) sendBtn.setAttribute("type", "button");
-  };
-})();
+  return null;
+}
