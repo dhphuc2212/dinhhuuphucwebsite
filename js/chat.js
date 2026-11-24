@@ -1,4 +1,6 @@
 (function () {
+  const History = window.ChatHistoryManager;
+
   function formatIsoToDmy(isoStr = "") {
     const m = String(isoStr).match(/^(\d{4})-(\d{2})-(\d{2})/);
     return m ? `${m[3]}-${m[2]}-${m[1]}` : isoStr;
@@ -18,7 +20,59 @@
     const input = card.querySelector("#chatInput, #aiInput, .chat-input");
     const sendBtn = card.querySelector("#chatSendBtn, #sendChatBtn, .chat-input-bar button");
     const messagesBox = card.querySelector("#chatMessages, #aiMessages, .chat-messages");
-    return { form, input, sendBtn, messagesBox };
+    return { card, form, input, sendBtn, messagesBox };
+  }
+
+  function ensureHistoryToolbar() {
+    const { card, messagesBox } = getChatElements();
+    if (!card || !messagesBox || !History) return;
+
+    let bar = card.querySelector("#aiHistoryBar");
+    if (!bar) {
+      bar = document.createElement("div");
+      bar.id = "aiHistoryBar";
+      bar.className = "ai-history-bar";
+      messagesBox.parentNode.insertBefore(bar, messagesBox);
+    }
+
+    const { threads, activeThread, isCloudMode } = History.getState();
+    const optionsHtml = threads
+      .map(
+        (t) =>
+          `<option value="${escapeHtml(t.id)}" ${t.id === activeThread.id ? "selected" : ""}>${escapeHtml(
+            t.title
+          )}</option>`
+      )
+      .join("");
+
+    bar.innerHTML = `
+      <div class="ai-history-left">
+        <button type="button" id="aiNewChatBtn" class="btn btn-primary btn-sm">+ Chat mới</button>
+        <select id="aiThreadSelect" class="ai-thread-select" title="Chọn đoạn hội thoại cũ">
+          ${optionsHtml}
+        </select>
+      </div>
+      <div class="ai-history-right">
+        <span class="ai-sync-tag ${isCloudMode ? "cloud" : ""}">
+          ${isCloudMode ? "☁️ Đồng bộ Google" : "💾 Lưu trên máy"}
+        </span>
+        <button type="button" id="aiDeleteChatBtn" class="btn btn-outline btn-sm" title="Xóa đoạn chat hiện tại">Xóa</button>
+      </div>
+    `;
+  }
+
+  function renderCurrentThread() {
+    const { messagesBox } = getChatElements();
+    if (!messagesBox || !History) return;
+
+    ensureHistoryToolbar();
+    const { activeThread } = History.getState();
+    messagesBox.innerHTML = "";
+
+    activeThread.messages.forEach((msg) => {
+      renderBubbleOnly(messagesBox, msg.role, msg.text, msg.schedule, { autoSyncCalendar: false });
+    });
+    messagesBox.scrollTop = messagesBox.scrollHeight;
   }
 
   async function syncScheduleToCalendar(schedule) {
@@ -34,7 +88,7 @@
     return { ok: false, message: "Chưa sẵn sàng" };
   }
 
-  async function appendMessage(messagesBox, role, text, schedule = null) {
+  async function renderBubbleOnly(messagesBox, role, text, schedule = null, { autoSyncCalendar = true } = {}) {
     if (!messagesBox) return;
 
     const isUser = role === "user";
@@ -62,7 +116,9 @@
             )}</div>
           </div>
           <div class="draft-actions">
-            <button type="button" class="btn btn-primary btn-sm save-gcal-btn" disabled>Đang đồng bộ...</button>
+            <button type="button" class="btn btn-primary btn-sm save-gcal-btn" ${
+              autoSyncCalendar ? "disabled" : ""
+            }>${autoSyncCalendar ? "Đang đồng bộ..." : "+ Đồng bộ lại"}</button>
           </div>
         </div>
       `;
@@ -74,22 +130,21 @@
 
     if (hasSchedule) {
       const saveBtn = row.querySelector(".save-gcal-btn");
-      const result = await syncScheduleToCalendar(schedule);
-      if (saveBtn) {
-        if (result.ok) {
-          saveBtn.textContent = `✓ ${result.message}`;
-          saveBtn.disabled = true;
-        } else {
-          saveBtn.textContent = result.message || "+ Thử đồng bộ lại";
-          saveBtn.disabled = false;
-          saveBtn.addEventListener("click", async () => {
-            saveBtn.disabled = true;
-            saveBtn.textContent = "Đang xử lý...";
-            const retry = await syncScheduleToCalendar(schedule);
-            saveBtn.textContent = retry.ok ? `✓ ${retry.message}` : retry.message;
-            saveBtn.disabled = retry.ok;
-          });
+      if (autoSyncCalendar) {
+        const result = await syncScheduleToCalendar(schedule);
+        if (saveBtn) {
+          saveBtn.textContent = result.ok ? `✓ ${result.message}` : result.message || "+ Thử đồng bộ lại";
+          saveBtn.disabled = result.ok;
         }
+      }
+      if (saveBtn && !saveBtn.disabled) {
+        saveBtn.addEventListener("click", async () => {
+          saveBtn.disabled = true;
+          saveBtn.textContent = "Đang xử lý...";
+          const retry = await syncScheduleToCalendar(schedule);
+          saveBtn.textContent = retry.ok ? `✓ ${retry.message}` : retry.message;
+          saveBtn.disabled = retry.ok;
+        });
       }
     }
   }
@@ -117,7 +172,12 @@
       sendBtn.textContent = "Đang...";
     }
 
-    await appendMessage(messagesBox, "user", message);
+    const recentHistory = History ? History.getActiveThread().messages.slice(-8) : [];
+    if (History) {
+      History.appendMessageToActive("user", message, null);
+      ensureHistoryToolbar();
+    }
+    await renderBubbleOnly(messagesBox, "user", message, null, { autoSyncCalendar: false });
 
     try {
       const now = new Date();
@@ -129,19 +189,24 @@
         body: JSON.stringify({
           message,
           today: todayIso,
-          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Ho_Chi_Minh"
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Ho_Chi_Minh",
+          history: recentHistory
         })
       });
 
       const data = await res.json();
-      await appendMessage(
-        messagesBox,
-        "bot",
-        data.reply || "Xin lỗi, trợ lý AI chưa thể phản hồi lúc này.",
-        data.schedule || null
-      );
+      const replyText = data.reply || "Xin lỗi, trợ lý AI chưa thể phản hồi lúc này.";
+      const scheduleObj = data.schedule || null;
+
+      if (History) {
+        History.appendMessageToActive("bot", replyText, scheduleObj);
+        ensureHistoryToolbar();
+      }
+      await renderBubbleOnly(messagesBox, "bot", replyText, scheduleObj, { autoSyncCalendar: true });
     } catch {
-      await appendMessage(messagesBox, "bot", "Không thể kết nối tới máy chủ AI. Bạn thử lại nhé!");
+      const errText = "Không thể kết nối tới máy chủ AI. Bạn thử lại nhé!";
+      if (History) History.appendMessageToActive("bot", errText, null);
+      await renderBubbleOnly(messagesBox, "bot", errText, null, { autoSyncCalendar: false });
     } finally {
       isSending = false;
       if (sendBtn) {
@@ -165,10 +230,27 @@
   );
 
   document.addEventListener("click", (e) => {
-    const sendBtn = e.target.closest("#chatSendBtn, #sendChatBtn, .chat-input-bar button");
-    if (sendBtn) {
+    if (e.target.closest("#chatSendBtn, #sendChatBtn, .chat-input-bar button")) {
       e.preventDefault();
       handleSendMessage(e);
+      return;
+    }
+    if (e.target.closest("#aiNewChatBtn") && History) {
+      e.preventDefault();
+      History.startNewThread();
+      return;
+    }
+    if (e.target.closest("#aiDeleteChatBtn") && History) {
+      e.preventDefault();
+      if (window.confirm("Xóa đoạn hội thoại hiện tại?")) {
+        History.deleteActiveThread();
+      }
+    }
+  });
+
+  document.addEventListener("change", (e) => {
+    if (e.target.id === "aiThreadSelect" && History) {
+      History.switchThread(e.target.value);
     }
   });
 
@@ -181,4 +263,25 @@
       }
     }
   });
+
+  // Tự động nạp lịch sử khi trang mở hoặc chuyển tab
+  function bootChatHistory() {
+    if (!History) return;
+    History.init(renderCurrentThread);
+    const mount = document.getElementById("sectionMount");
+    if (mount) {
+      const obs = new MutationObserver(() => {
+        if (document.querySelector(".ai-hub-card") && !document.getElementById("aiHistoryBar")) {
+          renderCurrentThread();
+        }
+      });
+      obs.observe(mount, { childList: true, subtree: true });
+    }
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", bootChatHistory);
+  } else {
+    bootChatHistory();
+  }
 })();
