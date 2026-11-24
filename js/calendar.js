@@ -406,13 +406,26 @@ window.GoogleCalendarManager = (function () {
   }
 
   function handleRedirectParams() {
+    if (window.location.hash && window.location.hash.includes("gcal_sid=")) {
+      const hashParams = new URLSearchParams(window.location.hash.slice(1));
+      const newSid = hashParams.get("gcal_sid");
+      const newEmail = hashParams.get("gcal_email") || "";
+      const newExp = Number(hashParams.get("gcal_exp") || "0") || 0;
+      if (newSid) {
+        sessionId = newSid;
+        userEmail = newEmail;
+        expiresAtMs = newExp;
+        persistCache();
+      }
+    }
+
     const params = new URLSearchParams(window.location.search);
     if (params.get("gcal_ok") === "1") {
       window.history.replaceState({}, "", window.location.pathname);
       notify("Đã kết nối Google Calendar (duy trì 60 ngày)!");
     } else if (params.get("gcal_error")) {
       window.history.replaceState({}, "", window.location.pathname);
-      notify("Đăng nhập Google không thành công.");
+      notify("Đăng nhập Google không thành công: " + params.get("gcal_error"));
     }
   }
 
