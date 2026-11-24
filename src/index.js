@@ -43,6 +43,7 @@ export default {
     const url = new URL(request.url);
     const pathname = url.pathname.replace(/\/+$/, "") || "/";
     const redirectUri = `${url.origin}/api/auth/google/callback`;
+    const isProdDomain = url.hostname.endsWith("dinhhuuphuc.com");
 
     if (pathname === "/api/auth/google/start") {
       const remember60 = url.searchParams.get("remember60") !== "0";
@@ -140,25 +141,43 @@ export default {
       const cookieParts = [
         `${COOKIE_NAME}=${encodeURIComponent(sessionId)}`,
         "Path=/",
+        ...(isProdDomain ? ["Domain=.dinhhuuphuc.com"] : []),
         "HttpOnly",
         "Secure",
         "SameSite=Lax",
         ...(remember60 ? [`Max-Age=${maxAgeSec}`, `Expires=${expiresDate}`] : [])
       ];
 
-      return new Response(null, {
-        status: 302,
-        headers: {
-          "Location": `${url.origin}/?gcal_ok=1`,
-          "Cache-Control": "no-store",
-          "Set-Cookie": cookieParts.join("; ")
+      return new Response(
+        `<!doctype html>
+<html lang="vi">
+<head><meta charset="UTF-8"><title>Đang hoàn tất đăng nhập...</title></head>
+<body>
+<script>
+  try {
+    localStorage.setItem("dhp_gcal_sid", ${JSON.stringify(sessionId)});
+    localStorage.setItem("dhp_gcal_email", ${JSON.stringify(email)});
+    localStorage.setItem("dhp_gcal_exp", ${JSON.stringify(String(expiresAtMs))});
+  } catch (e) {}
+  window.location.replace("/?gcal_ok=1");
+</script>
+</body>
+</html>`,
+        {
+          status: 200,
+          headers: {
+            "Content-Type": "text/html; charset=UTF-8",
+            "Cache-Control": "no-store",
+            "Set-Cookie": cookieParts.join("; ")
+          }
         }
-      });
+      );
     }
 
     if (pathname === "/api/auth/refresh") {
       const cookies = parseCookies(request.headers.get("Cookie") || "");
-      const sid = cookies[COOKIE_NAME];
+      const headerSid = (request.headers.get("X-Session-Id") || "").trim();
+      const sid = cookies[COOKIE_NAME] || headerSid;
 
       if (!sid || !env.AUTH_SESSIONS) {
         return jsonRes({ authenticated: false, reason: "no_cookie_or_kv" }, 200);
@@ -175,15 +194,36 @@ export default {
         return jsonRes({ authenticated: false, reason: "session_expired" }, 200);
       }
 
+      const remainingTtl = Math.max(60, Math.floor((sess.expiresAtMs - Date.now()) / 1000));
+      const expiresDate = new Date(sess.expiresAtMs).toUTCString();
+      const setCookieHeader =
+        !cookies[COOKIE_NAME] && headerSid
+          ? {
+              "Set-Cookie": [
+                `${COOKIE_NAME}=${encodeURIComponent(sid)}`,
+                "Path=/",
+                ...(isProdDomain ? ["Domain=.dinhhuuphuc.com"] : []),
+                "HttpOnly",
+                "Secure",
+                "SameSite=Lax",
+                ...(sess.remember60 ? [`Max-Age=${remainingTtl}`, `Expires=${expiresDate}`] : [])
+              ].join("; ")
+            }
+          : {};
+
       if (sess.accessToken && sess.accessExpiresAt && Date.now() < sess.accessExpiresAt - 60000) {
-        return jsonRes({
-          authenticated: true,
-          accessToken: sess.accessToken,
-          expiresIn: Math.floor((sess.accessExpiresAt - Date.now()) / 1000),
-          email: sess.email || "",
-          remember60: Boolean(sess.remember60),
-          expiresAtMs: sess.expiresAtMs
-        });
+        return jsonRes(
+          {
+            authenticated: true,
+            accessToken: sess.accessToken,
+            expiresIn: Math.floor((sess.accessExpiresAt - Date.now()) / 1000),
+            email: sess.email || "",
+            remember60: Boolean(sess.remember60),
+            expiresAtMs: sess.expiresAtMs
+          },
+          200,
+          setCookieHeader
+        );
       }
 
       if (!sess.refreshToken || !env.GOOGLE_CLIENT_SECRET) {
@@ -213,30 +253,35 @@ export default {
         sess.refreshToken = refreshed.refresh_token;
       }
 
-      const remainingTtl = Math.max(60, Math.floor((sess.expiresAtMs - Date.now()) / 1000));
       await env.AUTH_SESSIONS.put(`sess:${sid}`, JSON.stringify(sess), {
         expirationTtl: remainingTtl
       });
 
-      return jsonRes({
-        authenticated: true,
-        accessToken: sess.accessToken,
-        expiresIn: newExpiresIn,
-        email: sess.email || "",
-        remember60: Boolean(sess.remember60),
-        expiresAtMs: sess.expiresAtMs
-      });
+      return jsonRes(
+        {
+          authenticated: true,
+          accessToken: sess.accessToken,
+          expiresIn: newExpiresIn,
+          email: sess.email || "",
+          remember60: Boolean(sess.remember60),
+          expiresAtMs: sess.expiresAtMs
+        },
+        200,
+        setCookieHeader
+      );
     }
 
     if (pathname === "/api/auth/logout") {
       const cookies = parseCookies(request.headers.get("Cookie") || "");
-      const sid = cookies[COOKIE_NAME];
+      const headerSid = (request.headers.get("X-Session-Id") || "").trim();
+      const sid = cookies[COOKIE_NAME] || headerSid;
       if (sid && env.AUTH_SESSIONS) {
         await env.AUTH_SESSIONS.delete(`sess:${sid}`);
       }
       const clearCookie = [
         `${COOKIE_NAME}=`,
         "Path=/",
+        ...(isProdDomain ? ["Domain=.dinhhuuphuc.com"] : []),
         "HttpOnly",
         "Secure",
         "SameSite=Lax",
@@ -266,7 +311,7 @@ export default {
 <body>
   <main class="card">
     <h1>Chính sách quyền riêng tư (Privacy Policy)</h1>
-    <div class="meta">Cập nhật lần cuối: 23/11/2026 • Website: dinhhuuphuc.com</div>
+    <div class="meta">Cập nhật lần cuối: 24/11/2026 • Website: dinhhuuphuc.com</div>
     <h2>1. Dữ liệu chúng tôi truy cập</h2>
     <p>Khi bạn chủ động nhấn nút <strong>"Đăng nhập với Google để xem lịch"</strong> trên website <strong>dinhhuuphuc.com</strong>, ứng dụng chỉ yêu cầu các quyền tối thiểu gồm:</p>
     <ul>
@@ -305,7 +350,7 @@ export default {
 <body>
   <main class="card">
     <h1>Điều khoản dịch vụ (Terms of Service)</h1>
-    <div class="meta">Cập nhật lần cuối: 23/11/2026 • Website: dinhhuuphuc.com</div>
+    <div class="meta">Cập nhật lần cuối: 24/11/2026 • Website: dinhhuuphuc.com</div>
     <h2>1. Mục đích sử dụng</h2>
     <p>Website <strong>dinhhuuphuc.com</strong> cung cấp thông tin cá nhân, thông tin sản phẩm Gạo Ông Du, mini-game và công cụ trợ lý AI hỗ trợ sắp xếp lịch làm việc lên Google Calendar cá nhân.</p>
     <h2>2. Trách nhiệm người dùng</h2>
