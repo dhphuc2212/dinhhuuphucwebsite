@@ -46,6 +46,39 @@ CHỈ TRẢ VỀ ĐÚNG MỘT KHỐI JSON DUY NHẤT (không giải thích ngoà
 {"reply":"Câu trả lời tiếng Việt chi tiết","schedule":null}`;
 }
 
+function extractAiPayload(result) {
+  const raw = result?.response ?? result;
+
+  // Trường hợp Workers AI trả về sẵn Object (ví dụ { reply: "...", schedule: ... })
+  if (raw && typeof raw === "object") {
+    if (typeof raw.reply === "string") {
+      return { reply: raw.reply, schedule: raw.schedule || null };
+    }
+    if (typeof raw.response === "string") {
+      return extractAiPayload({ response: raw.response });
+    }
+    return { reply: JSON.stringify(raw), schedule: null };
+  }
+
+  // Trường hợp Workers AI trả về String
+  const rawText = String(raw || "").trim();
+  if (!rawText) {
+    return { reply: "Xin lỗi, mình chưa nhận được phản hồi từ AI.", schedule: null };
+  }
+
+  const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+  if (jsonMatch) {
+    try {
+      const obj = JSON.parse(jsonMatch[0]);
+      if (obj && typeof obj.reply === "string") {
+        return { reply: obj.reply, schedule: obj.schedule || null };
+      }
+    } catch {}
+  }
+
+  return { reply: rawText, schedule: null };
+}
+
 export async function handleChatRoutes(pathname, request, env) {
   if (pathname === "/api/models") {
     return jsonRes({
@@ -106,30 +139,16 @@ export async function handleChatRoutes(pathname, request, env) {
             max_tokens: 1024
           });
 
-          const rawText = (result?.response || "").toString().trim();
-          let parsed = { reply: rawText || "Đã ghi nhận!", schedule: null };
-
-          const jsonMatch = rawText.match(/\{[\s\S]*\}/);
-          if (jsonMatch) {
-            try {
-              const obj = JSON.parse(jsonMatch[0]);
-              if (obj && typeof obj.reply === "string") {
-                parsed = {
-                  reply: obj.reply,
-                  schedule: obj.schedule || null
-                };
-              }
-            } catch {}
-          }
-
-          const normalizedReply = parsed.reply.replace(
+          const parsed = extractAiPayload(result);
+          const replyStr = typeof parsed.reply === "string" ? parsed.reply : String(parsed.reply || "Đã ghi nhận!");
+          const normalizedReply = replyStr.replace(
             /\b(\d{4})-(\d{2})-(\d{2})\b/g,
             "$3-$2-$1"
           );
 
           return jsonRes({
             reply: normalizedReply,
-            schedule: parsed.schedule,
+            schedule: parsed.schedule || null,
             model: modelName
           });
         } catch (e) {
