@@ -411,85 +411,65 @@ export default {
           return jsonRes({ reply: "Hệ thống AI chưa có GEMINI_API_KEY trên Cloudflare Worker.", schedule: null });
         }
 
-        const systemPrompt = `Bạn là Trợ lý AI thông minh, am hiểu sâu sắc và đa năng trên website cá nhân của Đinh Hữu Phúc (dinhhuuphuc.com).
+        const systemPrompt = `Bạn là Trợ lý AI thông minh trên website cá nhân của Đinh Hữu Phúc (dinhhuuphuc.com).
 Ngày hiện tại của người dùng là: ${todayIso} (Múi giờ: ${timezone}, +07:00).
 
-1. VAI TRÒ & KHẢ NĂNG CỦA BẠN:
-- Bạn vừa là Trợ lý sắp xếp lịch làm việc Google Calendar thông minh, vừa là Trợ lý phân tích & giải đáp mọi câu hỏi (tư vấn kinh doanh, phân tích chiến lược, kiến thức công nghệ, đời sống, tính toán giá bán/chiết khấu, lập kế hoạch...).
-- Khi người dùng đặt câu hỏi phân tích, hỏi kiến thức hoặc trò chuyện: hãy trả lời sâu sắc, rõ ràng, có cấu trúc mạch lạc, đi thẳng vào trọng tâm và đặt "schedule": null.
-- Khi người dùng nhắn nội dung có ý định đặt lịch, nhắc việc, tham gia sự kiện, hẹn giờ (ví dụ: "Hôm nay từ 8h - 22h: sự kiện Festival Lúa Gạo Cần Thơ", "Mai 14h họp team", "Thứ 6 tuần này đi công tác"...): hãy bóc tách chính xác thông tin sự kiện vào "schedule", đồng thời trong "reply" xác nhận rõ tên sự kiện, ngày và khung giờ bắt đầu - kết thúc (kèm gợi ý chuẩn bị ngắn gọn nếu hữu ích).
-
-2. QUY TẮC BÓC TÁCH LỊCH ("schedule"):
-- "title": Chỉ lấy tên gọn gàng, sạch sẽ của sự kiện/công việc (loại bỏ hoàn toàn các cụm từ thời gian thừa như "Hôm nay từ 8h - 22h:", "Đặt lịch", "Ngày 2026-11-24..."). Ví dụ: "Sự kiện Festival Lúa Gạo Cần Thơ".
-- "date": Ngày bắt đầu chuẩn YYYY-MM-DD (tính dựa trên ngày hiện tại ${todayIso}).
-- "endDate": Ngày kết thúc chuẩn YYYY-MM-DD (bằng "date" nếu diễn ra trong 1 ngày).
-- "startTime": Giờ bắt đầu chuẩn 24h HH:MM (ví dụ "08:00").
-- "endTime": Giờ kết thúc chuẩn 24h HH:MM (ví dụ "22:00". Nếu người dùng không nói giờ kết thúc thì mặc định cộng 1 tiếng sau startTime).
-- "description": Ghi chú chi tiết, địa điểm hoặc các đầu việc cần lưu ý (nếu có).
-
-3. THÔNG TIN THAM KHẢO VỀ ĐINH HỮU PHÚC & CÔNG VIỆC:
-- Họ tên: Đinh Hữu Phúc • Khu vực: Phường Hòa Bình, TP.HCM.
-- Email cá nhân: dhphuc2212@dinhhuuphuc.com và dhphuc2212@gmail.com.
+THÔNG TIN CÁ NHÂN:
+- Họ tên: Đinh Hữu Phúc
+- Khu vực: Hòa Bình, TP.HCM
+- Email cá nhân: dhphuc2212@dinhhuuphuc.com và dhphuc2212@gmail.com
 - Liên hệ Zalo: https://zalo.me/0983533945 (tuyệt đối không viết số điện thoại thô dưới dạng văn bản gọi trực tiếp, luôn hướng dẫn bấm nút Liên hệ qua Zalo).
-- Thương hiệu công việc: Gạo Ông Du (website: gaoongdu.vn, email: info@gaoongdu.vn) thuộc Công ty CP Nông nghiệp Gạo Hữu cơ TD Sóc Trăng.
-- Bảng giá sản phẩm Gạo Ông Du hiện hành (Đơn giá bán NTD):
-  1. GẠO ST25 "HỮU CƠ" 1KG — 72,000đ | 5KG — 360,000đ
-  2. GẠO ST25 "TD XANH" 1KG — 52,000đ | 5KG — 260,000đ
-  3. GẠO TẤM ST25 "HỮU CƠ" 2KG — 82,000đ
-  4. GẠO LÀI THƠM 1KG — 35,500đ | 5KG — 177,500đ
-  5. GẠO LỨT DÂU TÂY ĐỎ 1KG — 112,000đ
-  6. GẠO LỨT DÂU TÂY TÍM 1KG — 112,000đ
-  7. GẠO NẾP SẾU ĐẦU ĐỎ 1KG — 112,000đ
-  8. GẠO NẾP CHIM SÂM CẦM 1KG — 112,000đ
-  9. GẠO SUMO (1 KG) — 112,000đ
+
+THÔNG TIN CÔNG VIỆC (Thuộc tab Công việc trên website):
+- Thương hiệu: Gạo Ông Du (website: gaoongdu.vn)
+- Email công việc: info@gaoongdu.vn
+- Đơn vị chủ quản: Công ty CP Nông nghiệp Gạo Hữu cơ TD Sóc Trăng
+- Bảng giá sản phẩm hiện hành (Đơn giá bán NTD):
+  1. GẠO ST25 "HỮU CƠ" 1KG (1 KG) — 72,000
+  2. GẠO ST25 "HỮU CƠ" 5KG (5 KG) — 360,000
+  3. GẠO ST25 "TD XANH" 1KG (1 KG) — 52,000
+  4. GẠO ST25 "TD XANH" 5KG (5 KG) — 260,000
+  5. GẠO TẤM ST25 "HỮU CƠ" 2KG (1 KG) — 82,000
+  6. GẠO LÀI THƠM 1KG (1 KG) — 35,500
+  7. GẠO LÀI THƠM 5KG (5 KG) — 177,500
+  8. GẠO LỨT DÂU TÂY ĐỎ 1KG (1 KG) — 112,000
+  9. GẠO LỨT DÂU TÂY TÍM 1KG (1 KG) — 112,000
+  10. GẠO NẾP SẾU ĐẦU ĐỎ 1KG (1 KG) — 112,000
+  11. GẠO NẾP CHIM SÂM CẦM 1KG (1 KG) — 112,000
+  12. GẠO SUMO (1 KG) — 112,000
+
+NHIỆM VỤ BÓC TÁCH LỊCH LÀM VIỆC:
+- Nếu người dùng nhắn nội dung mang tính sắp xếp, đặt lịch, nhắc việc, hẹn giờ, hãy bóc tách thông tin sự kiện vào trường "schedule".
+- Nếu chỉ là trò chuyện bình thường hoặc hỏi thông tin, đặt "schedule": null.
 
 BẮT BUỘC TRẢ VỀ ĐÚNG ĐỊNH DẠNG JSON THUẦN (không bọc markdown \`\`\`json):
 {
-  "reply": "Câu trả lời tiếng Việt chi tiết, tự nhiên, thông minh cho người dùng",
+  "reply": "Câu trả lời tiếng Việt tự nhiên, ngắn gọn, lịch sự cho người dùng",
   "schedule": null hoặc {
-    "title": "Tên sự kiện gọn gàng",
+    "title": "Tiêu đề ngắn gọn của lịch làm việc",
     "date": "YYYY-MM-DD",
-    "endDate": "YYYY-MM-DD",
+    "endDate": "YYYY-MM-DD (bằng date nếu chỉ diễn ra trong 1 ngày, hoặc ngày kết thúc nếu sự kiện kéo dài nhiều ngày)",
     "startTime": "HH:MM",
     "endTime": "HH:MM",
-    "description": "Ghi chú thêm"
+    "description": "Ghi chú thêm nếu có"
   }
 }`;
 
-        let candidateModels = [
-          "gemini-3-flash-preview",
-          "gemini-3.1-flash-lite-preview",
-          "gemini-flash-latest"
+        const fallbackModels = [
+          "gemini-3.5-flash-lite",
+          "gemini-3.8-flash",
+          "gemini-3.1-flash-lite",
+          "gemini-3.5-flash"
         ];
 
-        try {
-          const listRes = await fetch("https://generativelanguage.googleapis.com/v1beta/models", {
-            signal: AbortSignal.timeout(4000),
-            headers: { "x-goog-api-key": env.GEMINI_API_KEY }
-          });
-          if (listRes.ok) {
-            const listData = await listRes.json();
-            const dynamicFlashModels = (listData.models || [])
-              .filter(
-                (m) =>
-                  (m.supportedGenerationMethods || []).includes("generateContent") &&
-                  /gemini-(3|flash)/i.test(m.name) &&
-                  !/gemini-1\.|gemini-2\.0|gemini-2\.5|embedding|imagen|veo/i.test(m.name)
-              )
-              .map((m) => m.name.replace(/^models\//, ""))
-              .reverse();
-            candidateModels = [...new Set([...candidateModels, ...dynamicFlashModels])];
-          }
-        } catch {}
-
         let lastError = "";
-        for (const modelName of candidateModels) {
+        for (const modelName of fallbackModels) {
           try {
             const res = await fetch(
               `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent`,
               {
                 method: "POST",
-                signal: AbortSignal.timeout(12000),
+                signal: AbortSignal.timeout(6000),
                 headers: {
                   "Content-Type": "application/json",
                   "x-goog-api-key": env.GEMINI_API_KEY
@@ -497,10 +477,7 @@ BẮT BUỘC TRẢ VỀ ĐÚNG ĐỊNH DẠNG JSON THUẦN (không bọc markdow
                 body: JSON.stringify({
                   systemInstruction: { parts: [{ text: systemPrompt }] },
                   contents: [{ role: "user", parts: [{ text: message }] }],
-                  generationConfig: {
-                    responseMimeType: "application/json",
-                    temperature: 0.5
-                  }
+                  generationConfig: { responseMimeType: "application/json", temperature: 0.4 }
                 })
               }
             );
@@ -512,66 +489,40 @@ BẮT BUỘC TRẢ VỀ ĐÚNG ĐỊNH DẠNG JSON THUẦN (không bọc markdow
             const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
             let parsed = { reply: "Xin lỗi, mình chưa thể phản hồi lúc này.", schedule: null };
             try {
-              const cleaned = rawText.replace(/^```json\s*/i, "").replace(/```\s*$/i, "").trim();
-              parsed = JSON.parse(cleaned);
+              parsed = JSON.parse(rawText);
             } catch {
               if (rawText) parsed.reply = rawText;
             }
-            return jsonRes({
-              reply: parsed.reply || "Đã ghi nhận!",
-              schedule: parsed.schedule || null,
-              model: modelName
-            });
+            return jsonRes({ reply: parsed.reply || "Đã ghi nhận!", schedule: parsed.schedule || null, model: modelName });
           } catch (e) {
             lastError = e?.message || "Timeout";
           }
         }
 
-        // Bộ dự phòng bóc tách chuẩn cả khoảng giờ (VD: 8h - 22h) nếu API gián đoạn
-        const rangeMatch = message.match(
-          /\b(\d{1,2})\s*(?:h|:|giờ)\s*(\d{2})?\s*(?:-|–|đến|tới|to)\s*(\d{1,2})\s*(?:h|:|giờ)\s*(\d{2})?\b/i
-        );
-        const singleMatch = message.match(/\b(\d{1,2})\s*(?:h|:|giờ)\s*(\d{2})?\b/i);
-
-        if (rangeMatch || singleMatch) {
-          const startH = (rangeMatch ? rangeMatch[1] : singleMatch[1]).padStart(2, "0");
-          const startM = ((rangeMatch ? rangeMatch[2] : singleMatch[2]) || "00").padStart(2, "0");
-          const endH = rangeMatch
-            ? rangeMatch[3].padStart(2, "0")
-            : String((parseInt(startH, 10) + 1) % 24).padStart(2, "0");
-          const endM = rangeMatch ? (rangeMatch[4] || "00").padStart(2, "0") : startM;
-
-          const explicitDate = message.match(/\b(\d{4}-\d{2}-\d{2})\b/);
+        const timeMatch = message.match(/\b(\d{1,2})\s*(?:h|:|giờ)\s*(\d{2})?\b/i);
+        if (timeMatch) {
+          const hour = timeMatch[1].padStart(2, "0");
+          const minute = (timeMatch[2] || "00").padStart(2, "0");
+          const endHour = String((parseInt(hour, 10) + 1) % 24).padStart(2, "0");
           const isTomorrow = /ngày mai|mai\b/i.test(message);
-          let dateStr = explicitDate ? explicitDate[1] : todayIso;
-          if (!explicitDate && isTomorrow) {
-            const targetDate = new Date(todayIso + "T00:00:00");
-            targetDate.setDate(targetDate.getDate() + 1);
-            dateStr = targetDate.toISOString().slice(0, 10);
-          }
-
-          const cleanTitle =
-            message
-              .replace(/^(hôm nay|ngày mai|mai|đặt lịch)\s*/i, "")
-              .replace(/từ\s*\d{1,2}\s*(?:h|:|giờ)\s*\d{0,2}\s*(?:-|–|đến|tới)\s*\d{1,2}\s*(?:h|:|giờ)\s*\d{0,2}\s*[:\-]?\s*/i, "")
-              .replace(/—\s*Ngày\s*\d{4}-\d{2}-\d{2}.*$/i, "")
-              .trim() || message;
-
+          const targetDate = new Date(todayIso + "T00:00:00");
+          if (isTomorrow) targetDate.setDate(targetDate.getDate() + 1);
+          const dateStr = targetDate.toISOString().slice(0, 10);
           return jsonRes({
-            reply: `Đã nhận diện lịch "${cleanTitle}" từ ${startH}:${startM} đến ${endH}:${endM} ngày ${dateStr}. Bạn kiểm tra và bấm Lưu vào Google Calendar nhé!`,
+            reply: `Đã tự động bóc tách lịch lúc ${hour}:${minute} ngày ${dateStr}. Bạn kiểm tra và bấm lưu vào Google Calendar nhé!`,
             schedule: {
-              title: cleanTitle,
+              title: message,
               date: dateStr,
               endDate: dateStr,
-              startTime: `${startH}:${startM}`,
-              endTime: `${endH}:${endM}`,
-              description: "Tạo từ trợ lý dinhhuuphuc.com"
+              startTime: `${hour}:${minute}`,
+              endTime: `${endHour}:${minute}`,
+              description: "Tạo nhanh từ trợ lý dinhhuuphuc.com"
             }
           });
         }
 
         return jsonRes({
-          reply: `Kết nối tới Gemini API đang gặp sự cố (${lastError}). Bạn kiểm tra lại biến GEMINI_API_KEY trên Cloudflare Worker nhé!`,
+          reply: `Hệ thống Gemini đang bận (${lastError}). Bạn thử gửi lại sau vài giây hoặc nhắn qua Zalo cho Phúc nhé!`,
           schedule: null
         });
       } catch {
