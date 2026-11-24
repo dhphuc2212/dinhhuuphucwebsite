@@ -1,5 +1,7 @@
 import { jsonRes } from "./utils.js";
 
+const TTL_45_DAYS_SEC = 45 * 24 * 60 * 60; // 3,888,000 giây (45 ngày)
+
 function sanitizeCode(raw = "") {
   return String(raw || "")
     .trim()
@@ -43,15 +45,26 @@ export async function handleNotepadRoutes(pathname, request, env) {
           title: "",
           content: "",
           updatedAt: null,
+          expiresAt: null,
           exists: false
         });
       }
       const data = JSON.parse(raw);
+      const expiresAt = new Date(Date.now() + TTL_45_DAYS_SEC * 1000).toISOString();
+
+      // Gia hạn lại 45 ngày mỗi lần mở xem để tránh xóa nhầm ghi chú đang dùng
+      await env.AUTH_SESSIONS.put(
+        kvKey,
+        JSON.stringify({ ...data, expiresAt }),
+        { expirationTtl: TTL_45_DAYS_SEC }
+      );
+
       return jsonRes({
         code,
         title: data.title || "",
         content: data.content || "",
         updatedAt: data.updatedAt || null,
+        expiresAt,
         exists: true
       });
     } catch {
@@ -64,14 +77,17 @@ export async function handleNotepadRoutes(pathname, request, env) {
       const body = await request.json();
       const title = String(body.title || "").slice(0, 160);
       const content = String(body.content || "").slice(0, 200000);
-      const updatedAt = new Date().toISOString();
+      const nowMs = Date.now();
+      const updatedAt = new Date(nowMs).toISOString();
+      const expiresAt = new Date(nowMs + TTL_45_DAYS_SEC * 1000).toISOString();
 
       await env.AUTH_SESSIONS.put(
         kvKey,
-        JSON.stringify({ code, title, content, updatedAt })
+        JSON.stringify({ code, title, content, updatedAt, expiresAt }),
+        { expirationTtl: TTL_45_DAYS_SEC }
       );
 
-      return jsonRes({ ok: true, code, updatedAt });
+      return jsonRes({ ok: true, code, updatedAt, expiresAt });
     } catch {
       return jsonRes({ error: "Lỗi khi lưu nội dung notepad." }, 500);
     }
