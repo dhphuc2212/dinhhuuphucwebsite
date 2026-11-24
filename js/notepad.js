@@ -82,7 +82,10 @@ window.NotepadManager = (function () {
       <div class="dhp-np-editor-wrap">
         <input type="text" id="dhpNpTitle" class="dhp-np-title-input" placeholder="Tiêu đề ghi chú (tùy chọn)..." />
         <textarea id="dhpNpContent" class="dhp-np-textarea" placeholder="Nhập nội dung ghi chú tại đây... Mọi thay đổi được tự động lưu và đồng bộ ngay lập tức qua đường dẫn phía trên."></textarea>
-        <div class="dhp-np-footer">
+       <div class="dhp-np-footer">
+          <span>Tự động lưu & đồng bộ qua link • Tự xóa nếu không sử dụng sau 45 ngày.</span>
+          <span id="dhpNpCounter">0 ký tự • 0 từ</span>
+        </div>
           <span>Mẹo: Mở đúng đường dẫn này trên điện thoại hoặc máy tính để đồng bộ tức thì.</span>
           <span id="dhpNpCounter">0 ký tự • 0 từ</span>
         </div>
