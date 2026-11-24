@@ -1,8 +1,5 @@
 import { jsonRes } from "./utils.js";
 
-const CF_ACCOUNT_ID = "bcacbeb0acf589c04848b85a14294e7a";
-const GATEWAY_GOOGLE_BASE = `https://gateway.ai.cloudflare.com/v1/${CF_ACCOUNT_ID}/default/google-ai-studio/v1beta`;
-
 function formatIsoToDmy(isoStr = "") {
   const m = String(isoStr).match(/^(\d{4})-(\d{2})-(\d{2})/);
   return m ? `${m[3]}-${m[2]}-${m[1]}` : isoStr;
@@ -12,29 +9,29 @@ function buildSystemPrompt(todayIso, todayDmy, timezone) {
   return `Bạn là Trợ lý AI thông minh, am hiểu sâu sắc và đa năng trên website cá nhân của Đinh Hữu Phúc (dinhhuuphuc.com).
 Ngày hiện tại của người dùng là: ${todayDmy} (tức ${todayIso}, múi giờ: ${timezone}, +07:00).
 
-1. VAI TRÒ & KHẢ NĂNG CỦA BẠN:
-- Bạn vừa là Trợ lý sắp xếp lịch làm việc Google Calendar thông minh, vừa là Trợ lý phân tích & giải đáp mọi câu hỏi (tư vấn kinh doanh, phân tích chiến lược, kiến thức công nghệ, đời sống, tính toán giá bán/chiết khấu, lập kế hoạch...).
-- Khi người dùng đặt câu hỏi phân tích, hỏi kiến thức hoặc trò chuyện: hãy trả lời sâu sắc, rõ ràng, có cấu trúc mạch lạc, đi thẳng vào trọng tâm và đặt "schedule": null.
-- Khi người dùng nhắn nội dung có ý định đặt lịch, nhắc việc, tham gia sự kiện, hẹn giờ: hãy bóc tách chính xác thông tin sự kiện vào "schedule", đồng thời trong "reply" xác nhận rõ tên sự kiện, ngày và khung giờ bắt đầu - kết thúc.
+1. VAI TRÒ & KHẢ NĂNG:
+- Bạn vừa là Trợ lý sắp xếp lịch làm việc Google Calendar thông minh, vừa là Trợ lý phân tích & giải đáp mọi câu hỏi (kinh doanh, công nghệ, sức khỏe, đời sống, tính toán giá bán/chiết khấu, lập kế hoạch...).
+- Khi người dùng đặt câu hỏi hoặc trò chuyện thông thường (không phải đặt lịch): trả lời sâu sắc, rõ ràng, tự nhiên bằng tiếng Việt và đặt "schedule": null.
+- Khi người dùng nhắn nội dung có ý định đặt lịch, nhắc việc, tham gia sự kiện, hẹn giờ: bóc tách chính xác thông tin sự kiện vào "schedule", đồng thời trong "reply" xác nhận rõ tên sự kiện, ngày (dạng DD-MM-YYYY) và khung giờ bắt đầu - kết thúc.
 
-2. QUY TẮC ĐỊNH DẠNG NGÀY THÁNG (CỰC KỲ QUAN TRỌNG):
-- Trong toàn bộ nội dung văn bản trả lời cho người dùng ("reply" và "description"): BẮT BUỘC hiển thị ngày tháng theo dạng DD-MM-YYYY (ví dụ: 24-11-2026). Tuyệt đối không viết ngược dạng YYYY-MM-DD trong câu trả lời cho người dùng.
-- Riêng trong các trường kỹ thuật "schedule.date" và "schedule.endDate" gửi cho hệ thống Google Calendar API: giữ đúng chuẩn kỹ thuật YYYY-MM-DD (ví dụ: "2026-11-24") để hệ thống lưu được lên lịch.
+2. QUY TẮC ĐỊNH DẠNG NGÀY THÁNG:
+- Trong "reply" và "description": BẮT BUỘC viết ngày dạng DD-MM-YYYY (ví dụ: 24-11-2026). Không viết ngược YYYY-MM-DD trong văn bản trả lời.
+- Riêng trong "schedule.date" và "schedule.endDate": giữ chuẩn kỹ thuật YYYY-MM-DD (ví dụ: "2026-11-24") để lưu được lên Google Calendar.
 
 3. QUY TẮC BÓC TÁCH LỊCH ("schedule"):
-- "title": Chỉ lấy tên gọn gàng, sạch sẽ của sự kiện/công việc (loại bỏ các cụm từ thời gian thừa như "Hôm nay từ 8h - 22h:", "Đặt lịch", "Ngày 24-11-2026...").
-- "date": Ngày bắt đầu chuẩn kỹ thuật YYYY-MM-DD (tính dựa trên ngày hiện tại ${todayIso}).
-- "endDate": Ngày kết thúc chuẩn kỹ thuật YYYY-MM-DD (bằng "date" nếu diễn ra trong 1 ngày).
+- "title": Chỉ lấy tên gọn gàng của sự kiện (loại bỏ các cụm từ thừa như "Hôm nay từ 8h - 22h:", "Đặt lịch", "Ngày 24-11-2026...").
+- "date": Ngày bắt đầu chuẩn YYYY-MM-DD (tính dựa trên ngày hiện tại ${todayIso}).
+- "endDate": Ngày kết thúc chuẩn YYYY-MM-DD (bằng "date" nếu diễn ra trong 1 ngày).
 - "startTime": Giờ bắt đầu chuẩn 24h HH:MM (ví dụ "08:00").
-- "endTime": Giờ kết thúc chuẩn 24h HH:MM (ví dụ "22:00". Nếu người dùng không nói giờ kết thúc thì mặc định cộng 1 tiếng sau startTime).
-- "description": Ghi chú chi tiết, địa điểm hoặc các đầu việc cần lưu ý (dùng ngày dạng DD-MM-YYYY nếu có nhắc ngày).
+- "endTime": Giờ kết thúc chuẩn 24h HH:MM (ví dụ "22:00". Nếu không nói giờ kết thúc thì cộng 1 tiếng sau startTime).
+- "description": Ghi chú chi tiết, địa điểm hoặc lưu ý chuẩn bị.
 
-4. THÔNG TIN THAM KHẢO VỀ ĐINH HỮU PHÚC & CÔNG VIỆC:
+4. THÔNG TIN VỀ ĐINH HỮU PHÚC & CÔNG VIỆC:
 - Họ tên: Đinh Hữu Phúc • Khu vực: Phường Hòa Bình, TP.HCM.
 - Email cá nhân: dhphuc2212@dinhhuuphuc.com và dhphuc2212@gmail.com.
-- Liên hệ Zalo: https://zalo.me/0983533945 (không viết số điện thoại thô dưới dạng văn bản gọi trực tiếp, hướng dẫn bấm nút Liên hệ qua Zalo).
-- Thương hiệu công việc: Gạo Ông Du (website: gaoongdu.vn, email: info@gaoongdu.vn) thuộc Công ty CP Nông nghiệp Gạo Hữu cơ TD Sóc Trăng.
-- Bảng giá sản phẩm Gạo Ông Du hiện hành (Đơn giá bán NTD):
+- Liên hệ Zalo: https://zalo.me/0983533945 (không viết số điện thoại thô, hướng dẫn bấm nút Liên hệ qua Zalo).
+- Thương hiệu công việc: Gạo Ông Du (gaoongdu.vn, email: info@gaoongdu.vn) thuộc Công ty CP Nông nghiệp Gạo Hữu cơ TD Sóc Trăng.
+- Bảng giá Gạo Ông Du:
   1. GẠO ST25 "HỮU CƠ" 1KG — 72,000đ | 5KG — 360,000đ
   2. GẠO ST25 "TD XANH" 1KG — 52,000đ | 5KG — 260,000đ
   3. GẠO TẤM ST25 "HỮU CƠ" 2KG — 82,000đ
@@ -45,45 +42,20 @@ Ngày hiện tại của người dùng là: ${todayDmy} (tức ${todayIso}, mú
   8. GẠO NẾP CHIM SÂM CẦM 1KG — 112,000đ
   9. GẠO SUMO (1 KG) — 112,000đ
 
-BẮT BUỘC TRẢ VỀ ĐÚNG ĐỊNH DẠNG JSON THUẦN (không bọc markdown \`\`\`json):
-{
-  "reply": "Câu trả lời tiếng Việt chi tiết, tự nhiên, dùng ngày dạng DD-MM-YYYY",
-  "schedule": null hoặc {
-    "title": "Tên sự kiện gọn gàng",
-    "date": "YYYY-MM-DD",
-    "endDate": "YYYY-MM-DD",
-    "startTime": "HH:MM",
-    "endTime": "HH:MM",
-    "description": "Ghi chú thêm"
-  }
-}`;
+CHỈ TRẢ VỀ ĐÚNG MỘT KHỐI JSON DUY NHẤT (không giải thích ngoài JSON, không bọc markdown):
+{"reply":"Câu trả lời tiếng Việt chi tiết","schedule":null}`;
 }
 
 export async function handleChatRoutes(pathname, request, env) {
   if (pathname === "/api/models") {
-    if (!env.GEMINI_API_KEY) {
-      return jsonRes({ error: "Chưa cấu hình GEMINI_API_KEY trên Worker." }, 400);
-    }
-    try {
-      // Truyền key qua query ?key= để Cloudflare AI Gateway tự động khởi tạo gateway "default"
-      const apiKey = encodeURIComponent(env.GEMINI_API_KEY.trim());
-      const res = await fetch(`${GATEWAY_GOOGLE_BASE}/models?key=${apiKey}`, {
-        headers: { "cf-aig-skip-cache": "true" }
-      });
-      const data = await res.json();
-      if (!res.ok || data?.error) {
-        return jsonRes({ status: res.status, gatewayError: data?.error || data }, 400);
-      }
-      const available = (data.models || [])
-        .filter((m) => (m.supportedGenerationMethods || []).includes("generateContent"))
-        .map((m) => ({
-          id: (m.name || "").replace(/^models\//, ""),
-          displayName: m.displayName || m.name
-        }));
-      return jsonRes({ count: available.length, models: available }, 200);
-    } catch (e) {
-      return jsonRes({ error: e?.message || "Lỗi kết nối AI Gateway." }, 500);
-    }
+    return jsonRes({
+      provider: "Cloudflare Workers AI",
+      ready: Boolean(env.AI),
+      models: [
+        "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+        "@cf/google/gemma-3-12b-it"
+      ]
+    });
   }
 
   if (pathname === "/api/chat") {
@@ -109,66 +81,64 @@ export async function handleChatRoutes(pathname, request, env) {
       const timezone = (body.timezone || "Asia/Ho_Chi_Minh").toString();
 
       if (!message) return jsonRes({ error: "Vui lòng nhập nội dung." }, 400);
-      if (!env.GEMINI_API_KEY) {
-        return jsonRes({ reply: "Hệ thống AI chưa có GEMINI_API_KEY trên Cloudflare Worker.", schedule: null });
+      if (!env.AI) {
+        return jsonRes({
+          reply: "Chưa bật binding AI trong wrangler.jsonc. Bạn kiểm tra lại cấu hình nhé!",
+          schedule: null
+        });
       }
 
-      const apiKey = encodeURIComponent(env.GEMINI_API_KEY.trim());
       const systemPrompt = buildSystemPrompt(todayIso, todayDmy, timezone);
-      const candidateModels = [
-        "gemini-3-flash-preview",
-        "gemini-3.1-flash-lite-preview",
-        "gemini-2.5-flash"
+      const models = [
+        "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+        "@cf/google/gemma-3-12b-it"
       ];
 
       let lastError = "";
-      for (const modelName of candidateModels) {
+      for (const modelName of models) {
         try {
-          const res = await fetch(`${GATEWAY_GOOGLE_BASE}/models/${modelName}:generateContent?key=${apiKey}`, {
-            method: "POST",
-            signal: AbortSignal.timeout(12000),
-            headers: {
-              "Content-Type": "application/json",
-              "cf-aig-skip-cache": "true"
-            },
-            body: JSON.stringify({
-              systemInstruction: { parts: [{ text: systemPrompt }] },
-              contents: [{ role: "user", parts: [{ text: message }] }],
-              generationConfig: {
-                responseMimeType: "application/json",
-                temperature: 0.5
-              }
-            })
+          const result = await env.AI.run(modelName, {
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: message }
+            ],
+            temperature: 0.4,
+            max_tokens: 1024
           });
-          const data = await res.json();
-          if (!res.ok || data?.error) {
-            lastError = data?.error?.message || `HTTP ${res.status}`;
-            continue;
+
+          const rawText = (result?.response || "").toString().trim();
+          let parsed = { reply: rawText || "Đã ghi nhận!", schedule: null };
+
+          const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            try {
+              const obj = JSON.parse(jsonMatch[0]);
+              if (obj && typeof obj.reply === "string") {
+                parsed = {
+                  reply: obj.reply,
+                  schedule: obj.schedule || null
+                };
+              }
+            } catch {}
           }
-          const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
-          let parsed = { reply: "Xin lỗi, mình chưa thể phản hồi lúc này.", schedule: null };
-          try {
-            const cleaned = rawText.replace(/^```json\s*/i, "").replace(/```\s*$/i, "").trim();
-            parsed = JSON.parse(cleaned);
-          } catch {
-            if (rawText) parsed.reply = rawText;
-          }
-          const normalizedReply = (parsed.reply || "Đã ghi nhận!").replace(
+
+          const normalizedReply = parsed.reply.replace(
             /\b(\d{4})-(\d{2})-(\d{2})\b/g,
             "$3-$2-$1"
           );
+
           return jsonRes({
             reply: normalizedReply,
-            schedule: parsed.schedule || null,
+            schedule: parsed.schedule,
             model: modelName
           });
         } catch (e) {
-          lastError = e?.message || "Timeout";
+          lastError = e?.message || "Lỗi Workers AI";
         }
       }
 
       return jsonRes({
-        reply: `Kết nối tới Gemini API chưa thành công (${lastError}).`,
+        reply: `Hệ thống AI đang bận (${lastError}). Bạn thử gửi lại nhé!`,
         schedule: null
       });
     } catch {
