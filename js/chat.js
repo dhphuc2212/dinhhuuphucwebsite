@@ -13,27 +13,25 @@
   }
 
   function getChatElements() {
-    const mount = document.getElementById("sectionMount") || document;
-    const form =
-      mount.querySelector("#chatForm, #aiChatForm, form.chat-form, form.ai-form") ||
-      mount.querySelector("form");
-    const input =
-      mount.querySelector("#chatInput, #aiInput, .chat-input, input[type='text'], textarea") ||
-      (form ? form.querySelector("input, textarea") : null);
-    const sendBtn =
-      mount.querySelector("#chatSendBtn, #sendChatBtn, button[type='submit']") ||
-      (form ? form.querySelector("button") : null);
-    const messagesBox = mount.querySelector(
-      "#chatMessages, #aiMessages, .chat-messages, .ai-messages, .chat-body"
-    );
+    const card = document.querySelector(".ai-hub-card") || document;
+    const form = card.querySelector("#chatForm, #aiChatForm, form");
+    const input = card.querySelector("#chatInput, #aiInput, .chat-input");
+    const sendBtn = card.querySelector("#chatSendBtn, #sendChatBtn, .chat-input-bar button");
+    const messagesBox = card.querySelector("#chatMessages, #aiMessages, .chat-messages");
     return { form, input, sendBtn, messagesBox };
   }
 
   async function syncScheduleToCalendar(schedule) {
-    if (window.GoogleCalendarManager && typeof window.GoogleCalendarManager.createEvent === "function") {
-      return await window.GoogleCalendarManager.createEvent(schedule);
+    const mgr = window.GoogleCalendarManager;
+    if (!mgr) return { ok: false, message: "Chưa sẵn sàng" };
+    if (typeof mgr.executeAiAction === "function") {
+      return await mgr.executeAiAction(schedule);
     }
-    return false;
+    if (typeof mgr.createEvent === "function") {
+      const ok = await mgr.createEvent(schedule);
+      return { ok, message: ok ? "Đã lưu vào Google Calendar" : "Chưa thể lưu" };
+    }
+    return { ok: false, message: "Chưa sẵn sàng" };
   }
 
   async function appendMessage(messagesBox, role, text, schedule = null) {
@@ -49,18 +47,22 @@
       <div class="chat-bubble ${isUser ? "user" : "bot"}">${escapeHtml(text)}</div>
     `;
 
-    const hasSchedule = Boolean(schedule && schedule.title && schedule.date);
+    const hasSchedule = Boolean(schedule && (schedule.title || schedule.targetTitle));
     if (hasSchedule) {
-      const displayDate = formatIsoToDmy(schedule.date);
-      const timeRange = `${schedule.startTime || "08:00"} - ${schedule.endTime || "09:00"}`;
+      const displayTitle = schedule.title || schedule.targetTitle || "Lịch làm việc";
+      const displayDate = formatIsoToDmy(schedule.date || schedule.targetDate || "");
+      const timeRange =
+        schedule.startTime && schedule.endTime ? ` • ⏰ ${schedule.startTime} - ${schedule.endTime}` : "";
       html += `
         <div class="schedule-draft">
           <div>
-            <strong>📅 ${escapeHtml(schedule.title)}</strong>
-            <div class="draft-details">🗓 ${escapeHtml(displayDate)} • ⏰ ${escapeHtml(timeRange)}</div>
+            <strong>📅 ${escapeHtml(displayTitle)}</strong>
+            <div class="draft-details">${displayDate ? `🗓 ${escapeHtml(displayDate)}` : ""}${escapeHtml(
+              timeRange
+            )}</div>
           </div>
           <div class="draft-actions">
-            <button type="button" class="btn btn-primary btn-sm save-gcal-btn" disabled>Đang lưu tự động...</button>
+            <button type="button" class="btn btn-primary btn-sm save-gcal-btn" disabled>Đang đồng bộ...</button>
           </div>
         </div>
       `;
@@ -72,24 +74,20 @@
 
     if (hasSchedule) {
       const saveBtn = row.querySelector(".save-gcal-btn");
-      const saved = await syncScheduleToCalendar(schedule);
+      const result = await syncScheduleToCalendar(schedule);
       if (saveBtn) {
-        if (saved) {
-          saveBtn.textContent = "✓ Đã lưu vào Google Calendar";
+        if (result.ok) {
+          saveBtn.textContent = `✓ ${result.message}`;
           saveBtn.disabled = true;
         } else {
-          saveBtn.textContent = "+ Lưu vào Google Calendar";
+          saveBtn.textContent = result.message || "+ Thử đồng bộ lại";
           saveBtn.disabled = false;
           saveBtn.addEventListener("click", async () => {
             saveBtn.disabled = true;
-            saveBtn.textContent = "Đang lưu...";
-            const ok = await syncScheduleToCalendar(schedule);
-            if (ok) {
-              saveBtn.textContent = "✓ Đã lưu vào Google Calendar";
-            } else {
-              saveBtn.disabled = false;
-              saveBtn.textContent = "+ Lưu vào Google Calendar";
-            }
+            saveBtn.textContent = "Đang xử lý...";
+            const retry = await syncScheduleToCalendar(schedule);
+            saveBtn.textContent = retry.ok ? `✓ ${retry.message}` : retry.message;
+            saveBtn.disabled = retry.ok;
           });
         }
       }
@@ -157,8 +155,7 @@
   document.addEventListener(
     "submit",
     (e) => {
-      const mount = document.getElementById("sectionMount");
-      if (mount && mount.contains(e.target)) {
+      if (e.target.closest(".ai-hub-card")) {
         e.preventDefault();
         e.stopPropagation();
         handleSendMessage(e);
@@ -168,10 +165,8 @@
   );
 
   document.addEventListener("click", (e) => {
-    const btn = e.target.closest("button");
-    if (!btn) return;
-    const { sendBtn } = getChatElements();
-    if (sendBtn && btn === sendBtn) {
+    const sendBtn = e.target.closest("#chatSendBtn, #sendChatBtn, .chat-input-bar button");
+    if (sendBtn) {
       e.preventDefault();
       handleSendMessage(e);
     }
@@ -179,8 +174,8 @@
 
   document.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && !e.shiftKey) {
-      const { input } = getChatElements();
-      if (input && document.activeElement === input) {
+      const input = e.target.closest("#chatInput, #aiInput, .chat-input");
+      if (input) {
         e.preventDefault();
         handleSendMessage(e);
       }
