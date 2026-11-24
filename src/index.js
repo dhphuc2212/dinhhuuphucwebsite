@@ -101,9 +101,15 @@ export default {
 
       const tokenData = await tokenRes.json();
       if (!tokenRes.ok || !tokenData.access_token) {
-        return new Response(`Lỗi đổi token Google: ${tokenData.error_description || tokenData.error || tokenRes.status}`, {
-          status: 400
-        });
+        return new Response(
+          `<!doctype html><html lang="vi"><body style="font-family:sans-serif;padding:24px;">
+            <h3>Lỗi đổi token Google (${tokenRes.status})</h3>
+            <pre>${JSON.stringify(tokenData, null, 2)}</pre>
+            <p>redirect_uri đang gửi: <b>${redirectUri}</b></p>
+            <a href="/">Quay lại trang chủ</a>
+          </body></html>`,
+          { status: 400, headers: { "Content-Type": "text/html; charset=UTF-8" } }
+        );
       }
 
       let email = "";
@@ -148,30 +154,20 @@ export default {
         ...(remember60 ? [`Max-Age=${maxAgeSec}`, `Expires=${expiresDate}`] : [])
       ];
 
-      return new Response(
-        `<!doctype html>
-<html lang="vi">
-<head><meta charset="UTF-8"><title>Đang hoàn tất đăng nhập...</title></head>
-<body>
-<script>
-  try {
-    localStorage.setItem("dhp_gcal_sid", ${JSON.stringify(sessionId)});
-    localStorage.setItem("dhp_gcal_email", ${JSON.stringify(email)});
-    localStorage.setItem("dhp_gcal_exp", ${JSON.stringify(String(expiresAtMs))});
-  } catch (e) {}
-  window.location.replace("/?gcal_ok=1");
-</script>
-</body>
-</html>`,
-        {
-          status: 200,
-          headers: {
-            "Content-Type": "text/html; charset=UTF-8",
-            "Cache-Control": "no-store",
-            "Set-Cookie": cookieParts.join("; ")
-          }
+      const hashParams = new URLSearchParams({
+        gcal_sid: sessionId,
+        gcal_email: email,
+        gcal_exp: String(expiresAtMs)
+      });
+
+      return new Response(null, {
+        status: 302,
+        headers: {
+          "Location": `${url.origin}/?gcal_ok=1#${hashParams.toString()}`,
+          "Cache-Control": "no-store",
+          "Set-Cookie": cookieParts.join("; ")
         }
-      );
+      });
     }
 
     if (pathname === "/api/auth/refresh") {
