@@ -20,11 +20,23 @@ export default {
     const notepadResponse = await handleNotepadRoutes(pathname, request, env);
     if (notepadResponse) return notepadResponse;
 
-    // 4. Xử lý các trang tĩnh (/privacy, /terms)
+    // 4. Mở thẳng giao diện Notepad Online khi truy cập /notepad hoặc /notepad/:code
+    if (pathname === "/notepad" || pathname.startsWith("/notepad/")) {
+      const htmlRes = await env.ASSETS.fetch(new Request(new URL("/index.html", request.url)));
+      return new Response(htmlRes.body, {
+        status: 200,
+        headers: {
+          "Content-Type": "text/html; charset=utf-8",
+          "Cache-Control": "no-cache"
+        }
+      });
+    }
+
+    // 5. Xử lý các trang tĩnh (/privacy, /terms)
     const pageResponse = handleStaticPages(pathname);
     if (pageResponse) return pageResponse;
 
-    // 5. Phục vụ file giao diện tĩnh (HTML, CSS, JS)
+    // 6. Phục vụ file giao diện tĩnh (HTML, CSS, JS)
     const assetResponse = await env.ASSETS.fetch(request);
     if (assetResponse.status !== 404) return assetResponse;
     return env.ASSETS.fetch(new Request(new URL("/index.html", request.url), request));
