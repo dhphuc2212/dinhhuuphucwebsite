@@ -18,7 +18,7 @@
       mount.querySelector("#chatForm, #aiChatForm, form.chat-form, form.ai-form") ||
       mount.querySelector("form");
     const input =
-      mount.querySelector("#chatInput, #aiInput, input[type='text'], textarea") ||
+      mount.querySelector("#chatInput, #aiInput, .chat-input, input[type='text'], textarea") ||
       (form ? form.querySelector("input, textarea") : null);
     const sendBtn =
       mount.querySelector("#chatSendBtn, #sendChatBtn, button[type='submit']") ||
@@ -31,31 +31,39 @@
 
   function appendMessage(messagesBox, role, text, schedule = null) {
     if (!messagesBox) return;
-    const msgDiv = document.createElement("div");
-    msgDiv.className = role === "user" ? "chat-msg user-msg" : "chat-msg ai-msg";
 
-    let html = `<div class="msg-bubble">${escapeHtml(text).replace(/\n/g, "<br>")}</div>`;
+    const isUser = role === "user";
+    const row = document.createElement("div");
+    row.className = isUser ? "chat-row user" : "chat-row bot";
+
+    const senderLabel = isUser ? "Bạn" : "Trợ lý AI";
+    let html = `
+      <span class="chat-sender">${senderLabel}</span>
+      <div class="chat-bubble ${isUser ? "user" : "bot"}">${escapeHtml(text)}</div>
+    `;
 
     if (schedule && schedule.title && schedule.date) {
       const displayDate = formatIsoToDmy(schedule.date);
       const timeRange = `${schedule.startTime || "08:00"} - ${schedule.endTime || "09:00"}`;
       html += `
-        <div class="schedule-preview-card" style="margin-top:8px;padding:10px 12px;border-radius:10px;background:#f0fdf4;border:1px solid #bbf7d0;color:#14532d;font-size:0.9rem;">
-          <div style="font-weight:700;margin-bottom:4px;">📅 Lịch nhận diện: ${escapeHtml(schedule.title)}</div>
-          <div>🗓 Ngày: <strong>${escapeHtml(displayDate)}</strong> • ⏰ <strong>${escapeHtml(timeRange)}</strong></div>
-          <button type="button" class="btn btn-primary btn-sm save-gcal-btn" style="margin-top:8px;">
-            + Lưu vào Google Calendar
-          </button>
+        <div class="schedule-draft">
+          <div>
+            <strong>📅 ${escapeHtml(schedule.title)}</strong>
+            <div class="draft-details">🗓 ${escapeHtml(displayDate)} • ⏰ ${escapeHtml(timeRange)}</div>
+          </div>
+          <div class="draft-actions">
+            <button type="button" class="btn btn-primary btn-sm save-gcal-btn">+ Lưu Google Calendar</button>
+          </div>
         </div>
       `;
     }
 
-    msgDiv.innerHTML = html;
-    messagesBox.appendChild(msgDiv);
+    row.innerHTML = html;
+    messagesBox.appendChild(row);
     messagesBox.scrollTop = messagesBox.scrollHeight;
 
     if (schedule) {
-      const saveBtn = msgDiv.querySelector(".save-gcal-btn");
+      const saveBtn = row.querySelector(".save-gcal-btn");
       if (saveBtn) {
         saveBtn.addEventListener("click", async () => {
           saveBtn.disabled = true;
@@ -63,17 +71,17 @@
           try {
             if (typeof window.createGoogleCalendarEvent === "function") {
               await window.createGoogleCalendarEvent(schedule);
-              saveBtn.textContent = "✓ Đã lưu vào Google Calendar";
+              saveBtn.textContent = "✓ Đã lưu";
             } else if (typeof window.addEventToGoogleCalendar === "function") {
               await window.addEventToGoogleCalendar(schedule);
-              saveBtn.textContent = "✓ Đã lưu vào Google Calendar";
+              saveBtn.textContent = "✓ Đã lưu";
             } else {
               window.dispatchEvent(new CustomEvent("dhp:save-schedule", { detail: schedule }));
-              saveBtn.textContent = "✓ Đã gửi yêu cầu lưu lịch";
+              saveBtn.textContent = "✓ Đã gửi yêu cầu";
             }
           } catch {
             saveBtn.disabled = false;
-            saveBtn.textContent = "Thử lưu lại";
+            saveBtn.textContent = "Thử lại";
           }
         });
       }
@@ -122,12 +130,12 @@
       const data = await res.json();
       appendMessage(
         messagesBox,
-        "ai",
+        "bot",
         data.reply || "Xin lỗi, trợ lý AI chưa thể phản hồi lúc này.",
         data.schedule || null
       );
     } catch {
-      appendMessage(messagesBox, "ai", "Không thể kết nối tới máy chủ AI. Bạn thử lại nhé!");
+      appendMessage(messagesBox, "bot", "Không thể kết nối tới máy chủ AI. Bạn thử lại nhé!");
     } finally {
       isSending = false;
       if (sendBtn) {
