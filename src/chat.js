@@ -131,6 +131,19 @@ export async function handleChatRoutes(pathname, request, env) {
       }
 
       const systemPrompt = buildSystemPrompt(todayIso, todayDmy, timezone);
+      const history = Array.isArray(body.history) ? body.history.slice(-10) : [];
+      const conversationMsgs = [{ role: "system", content: systemPrompt }];
+
+      for (const h of history) {
+        if (h && typeof h.text === "string" && h.text.trim()) {
+          conversationMsgs.push({
+            role: h.role === "user" ? "user" : "assistant",
+            content: h.text.slice(0, 2000)
+          });
+        }
+      }
+      conversationMsgs.push({ role: "user", content: message });
+
       const models = [
         "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
         "@cf/google/gemma-3-12b-it"
@@ -140,10 +153,7 @@ export async function handleChatRoutes(pathname, request, env) {
       for (const modelName of models) {
         try {
           const result = await env.AI.run(modelName, {
-            messages: [
-              { role: "system", content: systemPrompt },
-              { role: "user", content: message }
-            ],
+            messages: conversationMsgs,
             temperature: 0.3,
             max_tokens: 1024
           });
