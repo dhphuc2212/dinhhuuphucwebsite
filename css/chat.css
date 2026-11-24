@@ -236,3 +236,65 @@
   color: var(--text-secondary);
   margin-top: 4px;
 }
+/* Thanh quản lý đa phiên chat AI (giống ChatGPT / Gemini) */
+.ai-history-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  background: var(--bg-page);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+}
+
+.ai-history-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 210px;
+}
+
+.ai-thread-select {
+  flex: 1;
+  max-width: 320px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  outline: none;
+  cursor: pointer;
+}
+
+.ai-thread-select:focus {
+  border-color: var(--accent);
+}
+
+.ai-history-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ai-sync-tag {
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #ffffff;
+  border: 1px solid var(--border-color);
+}
+
+.ai-sync-tag.cloud {
+  color: var(--accent-dark);
+  background: var(--accent-soft);
+  border-color: #99f6e4;
+}
