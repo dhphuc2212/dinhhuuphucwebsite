@@ -14,7 +14,9 @@ window.GoogleCalendarManager = (function () {
   let selectedDateStr = H.getTodayStr();
   let hideBirthdays = true;
   let cachedEvents = [];
+  let editingEventId = null;
   let checklistState = JSON.parse(localStorage.getItem("dhp_gcal_tasks") || "{}");
+  let eventDoneState = JSON.parse(localStorage.getItem("dhp_gcal_done") || "{}");
 
   function notify(msg) {
     if (typeof window.showToast === "function") {
@@ -46,6 +48,12 @@ window.GoogleCalendarManager = (function () {
     } catch {}
   }
 
+  function saveDoneState() {
+    try {
+      localStorage.setItem("dhp_gcal_done", JSON.stringify(eventDoneState));
+    } catch {}
+  }
+
   function scheduleAutoRefresh(expiresInSec = 3500) {
     if (refreshTimer) {
       clearTimeout(refreshTimer);
@@ -60,7 +68,7 @@ window.GoogleCalendarManager = (function () {
   function startLiveClock() {
     if (liveTickTimer) clearInterval(liveTickTimer);
     liveTickTimer = setInterval(() => {
-      if (selectedDateStr === H.getTodayStr() && cachedEvents.length > 0) {
+      if (selectedDateStr === H.getTodayStr() && cachedEvents.length > 0 && !editingEventId) {
         renderAgenda();
       }
     }, 60000);
@@ -97,19 +105,22 @@ window.GoogleCalendarManager = (function () {
           return accessToken;
         }
 
-        if (sessionId && data.reason === "session_not_found" && retryCount < 1) {
+        if (sessionId && data.reason === "session_not_found" && retryCount < 2) {
           ongoingRefreshPromise = null;
           await new Promise((r) => setTimeout(r, 1200));
           return refreshSession({ reload, retryCount: retryCount + 1 });
         }
+
+        if (data.reason === "expired" || data.reason === "revoked") {
+          sessionId = "";
+          accessToken = "";
+          userEmail = "";
+          expiresAtMs = 0;
+          persistCache();
+          syncUI();
+        }
       } catch {}
 
-      sessionId = "";
-      accessToken = "";
-      userEmail = "";
-      expiresAtMs = 0;
-      persistCache();
-      syncUI();
       return null;
     })();
 
@@ -135,6 +146,7 @@ window.GoogleCalendarManager = (function () {
     userEmail = "";
     expiresAtMs = 0;
     cachedEvents = [];
+    editingEventId = null;
     persistCache();
     syncUI();
 
@@ -191,6 +203,88 @@ window.GoogleCalendarManager = (function () {
     }
   }
 
+  async function patchGoogleEvent(eventId, payload) {
+    if (!accessToken) await refreshSession({ reload: false });
+    if (!accessToken) {
+      notify("Bạn cần đăng nhập Google trước khi cập nhật lịch trình.");
+      return null;
+    }
+
+    const endpoint = `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(eventId)}`;
+    let res = await fetch(endpoint, {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload)
+    });
+
+    if (res.status === 401) {
+      const refreshedToken = await refreshSession({ reload: false });
+      if (refreshedToken) {
+        res = await fetch(endpoint, {
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${refreshedToken}`,
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(payload)
+        });
+      }
+    }
+
+    if (!res.ok) return null;
+    return await res.json();
+  }
+
+  async function updateEvent(eventId, { title, date, startTime, endTime, description }) {
+    const startDate = date || selectedDateStr;
+    const sTime = H.normalizeTime(startTime, "09:00");
+    const eTime = H.normalizeTime(endTime, "10:00");
+
+    const payload = {
+      summary: title || "Lịch làm việc",
+      description: description ?? "",
+      start: { dateTime: `${startDate}T${sTime}:00+07:00`, timeZone: "Asia/Ho_Chi_Minh" },
+      end: { dateTime: `${startDate}T${eTime}:00+07:00`, timeZone: "Asia/Ho_Chi_Minh" }
+    };
+
+    const updated = await patchGoogleEvent(eventId, payload);
+    if (!updated) {
+      notify("Không thể cập nhật sự kiện trên Google Calendar.");
+      return false;
+    }
+
+    editingEventId = null;
+    selectedDateStr = startDate;
+    notify("Đã lưu thay đổi lên Google Calendar!");
+    await loadEvents({ skipRefresh: true });
+    return true;
+  }
+
+  async function toggleEventDone(eventId, isDone) {
+    eventDoneState[eventId] = isDone;
+    saveDoneState();
+
+    const ev = cachedEvents.find((item) => item.id === eventId);
+    if (ev) {
+      const cleanSummary = (ev.summary || "").replace(/^✅\s*/, "");
+      const newSummary = isDone ? `✅ ${cleanSummary}` : cleanSummary;
+      ev.summary = newSummary;
+
+      await patchGoogleEvent(eventId, {
+        summary: newSummary,
+        extendedProperties: {
+          private: { dhpDone: isDone ? "1" : "0" }
+        }
+      });
+    }
+
+    notify(isDone ? "Đã đánh dấu hoàn thành công việc." : "Đã chuyển về chưa hoàn thành.");
+    await renderAgenda();
+  }
+
   async function deleteEvent(eventId, title = "") {
     if (!eventId) return false;
     if (!accessToken) await refreshSession({ reload: false });
@@ -221,7 +315,10 @@ window.GoogleCalendarManager = (function () {
 
       if (res.status === 204 || res.ok) {
         delete checklistState[eventId];
+        delete eventDoneState[eventId];
         saveChecklist();
+        saveDoneState();
+        if (editingEventId === eventId) editingEventId = null;
         notify("Đã xóa lịch trình khỏi Google Calendar.");
         await loadEvents({ skipRefresh: true });
         return true;
@@ -239,6 +336,23 @@ window.GoogleCalendarManager = (function () {
       notify("Lỗi mạng khi xóa lịch trình.");
       return false;
     }
+  }
+
+  function isEventCompleted(ev) {
+    if (typeof eventDoneState[ev.id] === "boolean") return eventDoneState[ev.id];
+    if (ev.extendedProperties?.private?.dhpDone === "1") return true;
+    if ((ev.summary || "").startsWith("✅ ")) return true;
+    return false;
+  }
+
+  function toInputTime(dateObj) {
+    return `${String(dateObj.getHours()).padStart(2, "0")}:${String(dateObj.getMinutes()).padStart(2, "0")}`;
+  }
+
+  function toInputDate(dateObj) {
+    return `${dateObj.getFullYear()}-${String(dateObj.getMonth() + 1).padStart(2, "0")}-${String(
+      dateObj.getDate()
+    ).padStart(2, "0")}`;
   }
 
   async function renderAgenda() {
@@ -269,10 +383,8 @@ window.GoogleCalendarManager = (function () {
 
     timedItems.sort((a, b) => a.startDt - b.startDt);
 
-    const completedCount = isToday ? timedItems.filter((i) => i.endDt.getTime() <= nowMs).length : 0;
-    const summaryText = isToday
-      ? `Hôm nay: ${completedCount}/${timedItems.length} đầu việc đã hoàn thành`
-      : `Tổng cộng: ${timedItems.length} đầu việc trong ngày`;
+    const completedCount = timedItems.filter((item) => isEventCompleted(item)).length;
+    const summaryText = `Hoàn thành: ${completedCount}/${timedItems.length} đầu việc`;
 
     let html = `
       <div class="dhp-agenda-wrap">
@@ -330,6 +442,7 @@ window.GoogleCalendarManager = (function () {
     timedItems.forEach((ev, idx) => {
       const startMs = ev.startDt.getTime();
       const endMs = ev.endDt.getTime();
+      const done = isEventCompleted(ev);
 
       if (isToday && !nowDividerInserted && nowMs < startMs) {
         const nowStr = new Date(nowMs).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
@@ -343,7 +456,9 @@ window.GoogleCalendarManager = (function () {
       }
 
       let stateClass = "is-upcoming";
-      if (isToday) {
+      if (done) {
+        stateClass = "is-past is-done";
+      } else if (isToday) {
         if (nowMs >= endMs) stateClass = "is-past";
         else if (nowMs >= startMs && nowMs < endMs) {
           stateClass = "is-now";
@@ -356,13 +471,17 @@ window.GoogleCalendarManager = (function () {
       const startStr = ev.startDt.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
       const endStr = ev.endDt.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" });
       const durationStr = H.formatDuration(Math.round((endMs - startMs) / 60000));
-      const cat = H.classifyEvent(ev.summary, ev.description);
-      const safeTitle = H.escapeHtml(ev.summary || "(Không có tiêu đề)");
+      const cleanTitle = (ev.summary || "(Không có tiêu đề)").replace(/^✅\s*/, "");
+      const cat = H.classifyEvent(cleanTitle, ev.description);
+      const safeTitle = H.escapeHtml(cleanTitle);
       const safeId = H.escapeHtml(ev.id || "");
-      const canDelete = ev.eventType !== "birthday";
+      const canModify = ev.eventType !== "birthday";
+      const isEditing = editingEventId === ev.id;
 
       let statusBadge = "";
-      if (stateClass === "is-now") {
+      if (done) {
+        statusBadge = `<span class="dhp-badge dhp-badge-done">✓ Đã hoàn thành</span>`;
+      } else if (stateClass === "is-now") {
         const minsLeft = Math.max(1, Math.round((endMs - nowMs) / 60000));
         statusBadge = `<span class="dhp-badge dhp-badge-now">🔥 ĐANG DIỄN RA • Còn ${minsLeft}p</span>`;
       } else if (isToday && stateClass === "is-upcoming") {
@@ -373,7 +492,7 @@ window.GoogleCalendarManager = (function () {
       }
 
       let rainWarning = "";
-      if (weatherInfo?.rainyHours?.length && /giao|kho|gặp|khách|đi|chuyển|xe|ngoài/i.test(ev.summary || "")) {
+      if (!done && weatherInfo?.rainyHours?.length && /giao|kho|gặp|khách|đi|chuyển|xe|ngoài/i.test(cleanTitle)) {
         const sH = ev.startDt.getHours();
         const eH = ev.endDt.getHours();
         const hitRain = weatherInfo.rainyHours.some((h) => h >= sH && h <= eH);
@@ -395,11 +514,31 @@ window.GoogleCalendarManager = (function () {
         )
         .join("");
 
+      const editFormHtml = isEditing
+        ? `
+          <div class="dhp-edit-box" data-edit-event-id="${safeId}">
+            <input type="text" class="dhp-edit-input edit-title-input" value="${safeTitle}" placeholder="Tên công việc / sự kiện" />
+            <div class="dhp-edit-grid">
+              <input type="date" class="dhp-edit-input edit-date-input" value="${toInputDate(ev.startDt)}" />
+              <input type="time" class="dhp-edit-input edit-start-input" value="${toInputTime(ev.startDt)}" />
+              <input type="time" class="dhp-edit-input edit-end-input" value="${toInputTime(ev.endDt)}" />
+            </div>
+            <input type="text" class="dhp-edit-input edit-desc-input" value="${H.escapeHtml(
+              ev.description || ""
+            )}" placeholder="Ghi chú chi tiết (tùy chọn)" />
+            <div class="dhp-edit-actions">
+              <button type="button" class="btn btn-outline btn-sm cancel-edit-btn">Hủy</button>
+              <button type="button" class="btn btn-primary btn-sm save-edit-btn" data-event-id="${safeId}">Lưu thay đổi</button>
+            </div>
+          </div>
+        `
+        : "";
+
       html += `
         <div class="dhp-tl-row ${stateClass}">
           <div class="dhp-tl-time">
             <div>${startStr} – ${endStr}</div>
-            <span class="dhp-tl-dur">${stateClass === "is-past" ? "Đã xong" : durationStr}</span>
+            <span class="dhp-tl-dur">${done ? "Đã hoàn thành" : durationStr}</span>
           </div>
           <div class="dhp-tl-axis">
             <div class="dhp-tl-dot"></div>
@@ -412,15 +551,28 @@ window.GoogleCalendarManager = (function () {
                   <span class="dhp-badge ${cat.badgeCls}">${cat.label}</span>
                   ${statusBadge}
                 </div>
-                <div class="dhp-card-title">${stateClass === "is-past" ? "✓ " : ""}${safeTitle}</div>
+                <div class="dhp-event-title-row">
+                  ${
+                    canModify
+                      ? `<input type="checkbox" class="dhp-event-done-cb" data-event-id="${safeId}" title="Đánh dấu hoàn thành công việc" ${
+                          done ? "checked" : ""
+                        } />`
+                      : ""
+                  }
+                  <div class="dhp-card-title">${safeTitle}</div>
+                </div>
               </div>
               ${
-                canDelete
-                  ? `<button type="button" class="btn btn-outline btn-sm delete-event-btn" data-event-id="${safeId}" data-event-title="${safeTitle}" style="padding:2px 9px;font-size:0.75rem;flex-shrink:0;">Xóa</button>`
+                canModify
+                  ? `<div class="dhp-card-actions">
+                      <button type="button" class="btn btn-outline btn-sm edit-event-btn" data-event-id="${safeId}" style="padding:2px 9px;font-size:0.75rem;">Sửa</button>
+                      <button type="button" class="btn btn-outline btn-sm delete-event-btn" data-event-id="${safeId}" data-event-title="${safeTitle}" style="padding:2px 9px;font-size:0.75rem;">Xóa</button>
+                    </div>`
                   : ""
               }
             </div>
-            ${ev.description ? `<div class="dhp-card-desc">${H.escapeHtml(ev.description)}</div>` : ""}
+            ${editFormHtml}
+            ${!isEditing && ev.description ? `<div class="dhp-card-desc">${H.escapeHtml(ev.description)}</div>` : ""}
             ${rainWarning}
             <div class="dhp-subtasks">
               ${tasksHtml}
@@ -625,20 +777,58 @@ window.GoogleCalendarManager = (function () {
     }
 
     if (e.target.closest("#calPrevDayBtn")) {
+      editingEventId = null;
       selectedDateStr = H.shiftDateStr(selectedDateStr, -1);
       loadEvents();
       return;
     }
 
     if (e.target.closest("#calNextDayBtn")) {
+      editingEventId = null;
       selectedDateStr = H.shiftDateStr(selectedDateStr, 1);
       loadEvents();
       return;
     }
 
     if (e.target.closest("#calTodayBtn")) {
+      editingEventId = null;
       selectedDateStr = H.getTodayStr();
       loadEvents();
+      return;
+    }
+
+    const editBtn = e.target.closest(".edit-event-btn");
+    if (editBtn) {
+      e.preventDefault();
+      const targetId = editBtn.dataset.eventId;
+      editingEventId = editingEventId === targetId ? null : targetId;
+      renderAgenda();
+      return;
+    }
+
+    if (e.target.closest(".cancel-edit-btn")) {
+      e.preventDefault();
+      editingEventId = null;
+      renderAgenda();
+      return;
+    }
+
+    const saveEditBtn = e.target.closest(".save-edit-btn");
+    if (saveEditBtn) {
+      e.preventDefault();
+      const evId = saveEditBtn.dataset.eventId;
+      const box = saveEditBtn.closest(".dhp-edit-box");
+      if (box && evId) {
+        saveEditBtn.disabled = true;
+        saveEditBtn.textContent = "Đang lưu...";
+        updateEvent(evId, {
+          title: box.querySelector(".edit-title-input")?.value.trim(),
+          date: box.querySelector(".edit-date-input")?.value,
+          startTime: box.querySelector(".edit-start-input")?.value,
+          endTime: box.querySelector(".edit-end-input")?.value,
+          description: box.querySelector(".edit-desc-input")?.value.trim()
+        });
+      }
       return;
     }
 
@@ -652,13 +842,12 @@ window.GoogleCalendarManager = (function () {
     const quickAddBtn = e.target.closest(".dhp-quick-add-btn");
     if (quickAddBtn) {
       const timeStr = quickAddBtn.dataset.quickTime || "09:00";
-      const chatInput = document.querySelector("#chatInput, #aiChatInput, textarea[placeholder*='lịch'], input[placeholder*='lịch']");
+      const chatInput = document.querySelector("#chatInput, #aiChatInput, .chat-input");
       if (chatInput) {
-        chatInput.value = `Đặt lịch ngày ${selectedDateStr} lúc ${timeStr}: `;
+        const displayDmy = H.formatDisplayDate(selectedDateStr);
+        chatInput.value = `Đặt lịch ${displayDmy} lúc ${timeStr}: `;
         chatInput.focus();
         chatInput.scrollIntoView({ behavior: "smooth", block: "center" });
-      } else {
-        notify(`Hãy nhập lịch cho ngày ${selectedDateStr} lúc ${timeStr} vào ô Trợ lý AI ở trên!`);
       }
       return;
     }
@@ -678,6 +867,7 @@ window.GoogleCalendarManager = (function () {
 
   document.addEventListener("change", (e) => {
     if (e.target.id === "calDatePickerInput" && e.target.value) {
+      editingEventId = null;
       selectedDateStr = e.target.value;
       loadEvents();
       return;
@@ -686,6 +876,12 @@ window.GoogleCalendarManager = (function () {
     if (e.target.id === "calHideBirthdayToggle") {
       hideBirthdays = Boolean(e.target.checked);
       renderAgenda();
+      return;
+    }
+
+    if (e.target.classList.contains("dhp-event-done-cb")) {
+      const evId = e.target.dataset.eventId;
+      toggleEventDone(evId, Boolean(e.target.checked));
       return;
     }
 
@@ -725,6 +921,8 @@ window.GoogleCalendarManager = (function () {
     logout,
     loadEvents,
     createEvent,
+    updateEvent,
+    toggleEventDone,
     deleteEvent,
     bindSectionEvents
   };
