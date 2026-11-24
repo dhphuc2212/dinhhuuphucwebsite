@@ -1,5 +1,6 @@
 import { handleAuthRoutes } from "./auth.js";
 import { handleChatRoutes } from "./chat.js";
+import { handleNotepadRoutes } from "./notepad.js";
 import { handleStaticPages } from "./pages.js";
 
 export default {
@@ -11,15 +12,19 @@ export default {
     const authResponse = await handleAuthRoutes(pathname, request, env, url);
     if (authResponse) return authResponse;
 
-    // 2. Xử lý Trợ lý AI Gemini & danh sách model
+    // 2. Xử lý Trợ lý AI & danh sách model
     const chatResponse = await handleChatRoutes(pathname, request, env);
     if (chatResponse) return chatResponse;
 
-    // 3. Xử lý các trang tĩnh (/privacy, /terms)
+    // 3. Xử lý API Notepad Online (/api/notepad/:code)
+    const notepadResponse = await handleNotepadRoutes(pathname, request, env);
+    if (notepadResponse) return notepadResponse;
+
+    // 4. Xử lý các trang tĩnh (/privacy, /terms)
     const pageResponse = handleStaticPages(pathname);
     if (pageResponse) return pageResponse;
 
-    // 4. Phục vụ file giao diện tĩnh (HTML, CSS, JS)
+    // 5. Phục vụ file giao diện tĩnh (HTML, CSS, JS)
     const assetResponse = await env.ASSETS.fetch(request);
     if (assetResponse.status !== 404) return assetResponse;
     return env.ASSETS.fetch(new Request(new URL("/index.html", request.url), request));
