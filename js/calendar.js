@@ -896,6 +896,101 @@ window.GoogleCalendarManager = (function () {
     }
   });
 
+async function findMatchingEvent(targetTitle, targetDate) {
+    const searchDate = targetDate || selectedDateStr || H.getTodayStr();
+    if (selectedDateStr !== searchDate) {
+      selectedDateStr = searchDate;
+      await loadEvents({ skipRefresh: false });
+    } else if (cachedEvents.length === 0) {
+      await loadEvents({ skipRefresh: false });
+    }
+
+    const candidates = cachedEvents.filter((ev) => ev.eventType !== "birthday");
+    if (candidates.length === 0) return null;
+
+    const kw = (targetTitle || "").toLowerCase().replace(/^✅\s*/, "").trim();
+    if (!kw) return candidates[0];
+
+    const exact = candidates.find((ev) =>
+      (ev.summary || "").toLowerCase().replace(/^✅\s*/, "").includes(kw)
+    );
+    if (exact) return exact;
+
+    const words = kw.split(/\s+/).filter((w) => w.length > 1);
+    return (
+      candidates.find((ev) => {
+        const s = (ev.summary || "").toLowerCase();
+        return words.some((w) => s.includes(w));
+      }) || null
+    );
+  }
+
+  async function executeAiAction(schedule) {
+    if (!schedule || typeof schedule !== "object") return { ok: false, message: "Dữ liệu lịch không hợp lệ." };
+    const action = (schedule.action || "create").toLowerCase();
+
+    if (action === "create") {
+      const ok = await createEvent(schedule);
+      return { ok, message: ok ? "Đã thêm vào Google Calendar" : "Không thể thêm lịch" };
+    }
+
+    const matched = await findMatchingEvent(schedule.targetTitle || schedule.title, schedule.targetDate || schedule.date);
+    if (!matched) {
+      notify("Không tìm thấy sự kiện phù hợp trong ngày để thực hiện thao tác.");
+      return { ok: false, message: "Không tìm thấy sự kiện khớp tên" };
+    }
+
+    if (action === "delete") {
+      if (!accessToken) await refreshSession({ reload: false });
+      if (!accessToken) return { ok: false, message: "Chưa đăng nhập Google" };
+      const endpoint = `https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(matched.id)}`;
+      const res = await fetch(endpoint, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${accessToken}` }
+      });
+      if (res.status === 204 || res.ok) {
+        delete checklistState[matched.id];
+        delete eventDoneState[matched.id];
+        saveChecklist();
+        saveDoneState();
+        notify(`Đã xóa "${matched.summary}" khỏi Google Calendar.`);
+        await loadEvents({ skipRefresh: true });
+        return { ok: true, message: "Đã xóa khỏi Google Calendar" };
+      }
+      return { ok: false, message: "Lỗi khi xóa sự kiện" };
+    }
+
+    if (action === "complete") {
+      const targetDone = typeof schedule.done === "boolean" ? schedule.done : true;
+      await toggleEventDone(matched.id, targetDone);
+      return {
+        ok: true,
+        message: targetDone ? "Đã đánh dấu hoàn thành" : "Đã mở lại công việc"
+      };
+    }
+
+    if (action === "update") {
+      const oldStart = new Date(matched.start.dateTime);
+      const oldEnd = new Date(matched.end.dateTime);
+      const newDate = schedule.date || toInputDate(oldStart);
+      const newStart = schedule.startTime || toInputTime(oldStart);
+      const newEnd = schedule.endTime || toInputTime(oldEnd);
+      const cleanOldTitle = (matched.summary || "").replace(/^✅\s*/, "");
+      const newTitle = schedule.title || cleanOldTitle;
+
+      const ok = await updateEvent(matched.id, {
+        title: newTitle,
+        date: newDate,
+        startTime: newStart,
+        endTime: newEnd,
+        description: schedule.description !== undefined ? schedule.description : matched.description || ""
+      });
+      return { ok, message: ok ? "Đã cập nhật trên Google Calendar" : "Lỗi cập nhật lịch" };
+    }
+
+    return { ok: false, message: "Hành động không hỗ trợ" };
+  }
+
   function bindSectionEvents() {
     syncUI();
     if (accessToken) loadEvents({ skipRefresh: true });
@@ -924,6 +1019,7 @@ window.GoogleCalendarManager = (function () {
     updateEvent,
     toggleEventDone,
     deleteEvent,
+    executeAiAction,
     bindSectionEvents
   };
 })();
