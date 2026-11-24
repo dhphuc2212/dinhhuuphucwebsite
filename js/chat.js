@@ -29,7 +29,14 @@
     return { form, input, sendBtn, messagesBox };
   }
 
-  function appendMessage(messagesBox, role, text, schedule = null) {
+  async function syncScheduleToCalendar(schedule) {
+    if (window.GoogleCalendarManager && typeof window.GoogleCalendarManager.createEvent === "function") {
+      return await window.GoogleCalendarManager.createEvent(schedule);
+    }
+    return false;
+  }
+
+  async function appendMessage(messagesBox, role, text, schedule = null) {
     if (!messagesBox) return;
 
     const isUser = role === "user";
@@ -42,7 +49,8 @@
       <div class="chat-bubble ${isUser ? "user" : "bot"}">${escapeHtml(text)}</div>
     `;
 
-    if (schedule && schedule.title && schedule.date) {
+    const hasSchedule = Boolean(schedule && schedule.title && schedule.date);
+    if (hasSchedule) {
       const displayDate = formatIsoToDmy(schedule.date);
       const timeRange = `${schedule.startTime || "08:00"} - ${schedule.endTime || "09:00"}`;
       html += `
@@ -52,7 +60,7 @@
             <div class="draft-details">🗓 ${escapeHtml(displayDate)} • ⏰ ${escapeHtml(timeRange)}</div>
           </div>
           <div class="draft-actions">
-            <button type="button" class="btn btn-primary btn-sm save-gcal-btn">+ Lưu Google Calendar</button>
+            <button type="button" class="btn btn-primary btn-sm save-gcal-btn" disabled>Đang lưu tự động...</button>
           </div>
         </div>
       `;
@@ -62,28 +70,28 @@
     messagesBox.appendChild(row);
     messagesBox.scrollTop = messagesBox.scrollHeight;
 
-    if (schedule) {
+    if (hasSchedule) {
       const saveBtn = row.querySelector(".save-gcal-btn");
+      const saved = await syncScheduleToCalendar(schedule);
       if (saveBtn) {
-        saveBtn.addEventListener("click", async () => {
+        if (saved) {
+          saveBtn.textContent = "✓ Đã lưu vào Google Calendar";
           saveBtn.disabled = true;
-          saveBtn.textContent = "Đang lưu...";
-          try {
-            if (typeof window.createGoogleCalendarEvent === "function") {
-              await window.createGoogleCalendarEvent(schedule);
-              saveBtn.textContent = "✓ Đã lưu";
-            } else if (typeof window.addEventToGoogleCalendar === "function") {
-              await window.addEventToGoogleCalendar(schedule);
-              saveBtn.textContent = "✓ Đã lưu";
+        } else {
+          saveBtn.textContent = "+ Lưu vào Google Calendar";
+          saveBtn.disabled = false;
+          saveBtn.addEventListener("click", async () => {
+            saveBtn.disabled = true;
+            saveBtn.textContent = "Đang lưu...";
+            const ok = await syncScheduleToCalendar(schedule);
+            if (ok) {
+              saveBtn.textContent = "✓ Đã lưu vào Google Calendar";
             } else {
-              window.dispatchEvent(new CustomEvent("dhp:save-schedule", { detail: schedule }));
-              saveBtn.textContent = "✓ Đã gửi yêu cầu";
+              saveBtn.disabled = false;
+              saveBtn.textContent = "+ Lưu vào Google Calendar";
             }
-          } catch {
-            saveBtn.disabled = false;
-            saveBtn.textContent = "Thử lại";
-          }
-        });
+          });
+        }
       }
     }
   }
@@ -111,7 +119,7 @@
       sendBtn.textContent = "Đang...";
     }
 
-    appendMessage(messagesBox, "user", message);
+    await appendMessage(messagesBox, "user", message);
 
     try {
       const now = new Date();
@@ -128,14 +136,14 @@
       });
 
       const data = await res.json();
-      appendMessage(
+      await appendMessage(
         messagesBox,
         "bot",
         data.reply || "Xin lỗi, trợ lý AI chưa thể phản hồi lúc này.",
         data.schedule || null
       );
     } catch {
-      appendMessage(messagesBox, "bot", "Không thể kết nối tới máy chủ AI. Bạn thử lại nhé!");
+      await appendMessage(messagesBox, "bot", "Không thể kết nối tới máy chủ AI. Bạn thử lại nhé!");
     } finally {
       isSending = false;
       if (sendBtn) {
