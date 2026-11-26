@@ -92,7 +92,7 @@
   }
 
   async function loadTab(tabName) {
-    const validTabs = ["about", "work", "minigame"];
+    const validTabs = ["about", "work", "minigame", "brain"];
     const tab = validTabs.includes(tabName) ? tabName : "about";
 
     document.querySelectorAll(".nav-btn").forEach((btn) => {
@@ -100,7 +100,7 @@
     });
 
     try {
-      const res = await fetch(`./sections/${tab}.html`);
+      const res = await fetch(`/sections/${tab}.html`);
       const html = await res.text();
       sectionMount.innerHTML = html;
 
@@ -125,6 +125,8 @@
         window.initWorkSection?.();
       } else if (tab === "minigame") {
         initMiniGameSwitcher();
+      } else if (tab === "brain") {
+        window.SecondBrainManager?.initTab();
       }
 
       window.scrollTo({ top: 0, behavior: "smooth" });
