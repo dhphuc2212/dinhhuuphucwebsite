@@ -13,7 +13,7 @@ async function resolveUserEmail(request, env) {
   const sid = getSessionId(request);
   if (!sid || !env.AUTH_SESSIONS) return "";
   try {
-    const raw = await env.AUTH_SESSIONS.get(`gcal_session:${sid}`);
+    const raw = await env.AUTH_SESSIONS.get(`sess:${sid}`);
     if (!raw) return "";
     const sess = JSON.parse(raw);
     return (sess.email || "").toLowerCase().trim();
