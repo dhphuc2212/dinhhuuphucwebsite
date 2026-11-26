@@ -19,20 +19,18 @@ window.SecondBrainManager = (function () {
     return localStorage.getItem("dhp_gcal_sid") || "";
   }
 
-  async function fetchBrainList() {
+  function buildAuthHeaders(extra = {}) {
     const sid = getSid();
+    return sid ? { ...extra, "X-Session-Id": sid } : { ...extra };
+  }
+
+  async function fetchBrainList() {
     const statusEl = document.getElementById("sbAccountStatus");
-    if (!sid) {
-      itemsCache = [];
-      if (statusEl) statusEl.textContent = "Chưa đăng nhập Google (chỉ xem)";
-      updateCount();
-      return;
-    }
     try {
       const res = await fetch("/api/brain", {
         credentials: "include",
         cache: "no-store",
-        headers: { "X-Session-Id": sid }
+        headers: buildAuthHeaders()
       });
       const data = await res.json();
       itemsCache = Array.isArray(data.items) ? data.items : [];
@@ -42,7 +40,10 @@ window.SecondBrainManager = (function () {
           : "Chưa đăng nhập Google";
       }
       updateCount();
-    } catch {}
+      return data;
+    } catch {
+      return { authenticated: false, items: [] };
+    }
   }
 
   function updateCount() {
@@ -54,7 +55,8 @@ window.SecondBrainManager = (function () {
     const box = document.getElementById("dhpBrainListContainer");
     if (!box) return;
 
-    if (!getSid()) {
+    const statusText = document.getElementById("sbAccountStatus")?.textContent || "";
+    if (!getSid() && statusText.includes("Chưa đăng nhập")) {
       box.innerHTML = `<div class="calendar-empty-state">Hãy nhấn <strong>Đăng nhập Google</strong> ở góc trên để lưu và đồng bộ Bộ Não Thứ 2 của riêng bạn.</div>`;
       return;
     }
@@ -67,7 +69,7 @@ window.SecondBrainManager = (function () {
       : itemsCache;
 
     if (filtered.length === 0) {
-      box.innerHTML = `<div class="calendar-empty-state">Chưa có dữ liệu nào. Bạn hãy nhập nội dung ở khung bên trên hoặc nhắn <strong>"Ghi nhớ: ..."</strong> trong khung chat bên phải.</div>`;
+      box.innerHTML = `<div class="calendar-empty-state">Kho tri thức đang trống. Hãy dán link YouTube/Facebook hoặc nội dung vào khung phía trên để AI học nhé!</div>`;
       return;
     }
 
@@ -102,7 +104,7 @@ window.SecondBrainManager = (function () {
         const res = await fetch(`/api/brain/item/${encodeURIComponent(id)}`, {
           method: "DELETE",
           credentials: "include",
-          headers: { "X-Session-Id": getSid() }
+          headers: buildAuthHeaders()
         });
         const data = await res.json();
         if (data.ok) {
@@ -126,6 +128,60 @@ window.SecondBrainManager = (function () {
     `;
     box.appendChild(row);
     box.scrollTop = box.scrollHeight;
+  }
+
+  async function handleQuickIngestSubmit(e) {
+    e.preventDefault();
+    const input = document.getElementById("sbQuickIngestInput");
+    const btn = document.getElementById("sbQuickIngestBtn");
+    if (!input) return;
+
+    const rawText = input.value.trim();
+    if (!rawText) {
+      notify("Vui lòng dán link hoặc nội dung cần AI học.");
+      return;
+    }
+
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = "AI đang học...";
+    }
+
+    try {
+      const now = new Date();
+      const todayIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+
+      // Gửi qua /api/chat với câu lệnh rõ ràng để AI tự chắt lọc tiêu đề, tóm tắt, từ khóa và lưu vào KV
+      const prompt = `Ghi nhớ và lưu nội dung sau vào Bộ não thứ 2 giúp tôi:\n${rawText}`;
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        credentials: "include",
+        headers: buildAuthHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({
+          message: prompt,
+          today: todayIso,
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Ho_Chi_Minh",
+          mode: "second_brain_ingest"
+        })
+      });
+
+      const data = await res.json();
+      if (data.savedMemory) {
+        input.value = "";
+        notify(`🧠 Đã nạp kiến thức: ${data.savedMemory.title}`);
+        await fetchBrainList();
+        renderList(document.getElementById("dhpBrainSearchInput")?.value || "");
+      } else {
+        notify(data.reply || "Vui lòng đăng nhập Google để lưu kiến thức.");
+      }
+    } catch {
+      notify("Lỗi kết nối khi nạp kiến thức.");
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = "⚡ Gửi AI nạp ngay";
+      }
+    }
   }
 
   async function handleBrainChatSubmit(e) {
@@ -152,14 +208,11 @@ window.SecondBrainManager = (function () {
     try {
       const now = new Date();
       const todayIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-      const sid = getSid();
-      const headers = { "Content-Type": "application/json" };
-      if (sid) headers["X-Session-Id"] = sid;
 
       const res = await fetch("/api/chat", {
         method: "POST",
         credentials: "include",
-        headers,
+        headers: buildAuthHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({
           message,
           today: todayIso,
@@ -194,16 +247,31 @@ window.SecondBrainManager = (function () {
     await fetchBrainList();
     renderList("");
 
+    // Chuyển đổi giữa chế độ Chat/Quăng link nhanh và Form chi tiết
+    document.querySelectorAll("[data-ingest-mode]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const mode = btn.dataset.ingestMode;
+        document.querySelectorAll("[data-ingest-mode]").forEach((b) => b.classList.toggle("active", b === btn));
+        document.getElementById("sbQuickIngestForm")?.classList.toggle("hidden", mode !== "quick");
+        document.getElementById("sbManualIngestBox")?.classList.toggle("hidden", mode !== "manual");
+      });
+    });
+
+    document.getElementById("sbQuickIngestForm")?.addEventListener("submit", handleQuickIngestSubmit);
+
+    // Cho phép nhấn Enter (không giữ Shift) trong ô quăng link để gửi ngay
+    document.getElementById("sbQuickIngestInput")?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        handleQuickIngestSubmit(e);
+      }
+    });
+
     document.getElementById("dhpBrainSearchInput")?.addEventListener("input", (e) => {
       renderList(e.target.value);
     });
 
     document.getElementById("dhpBrainSaveManualBtn")?.addEventListener("click", async () => {
-      const sid = getSid();
-      if (!sid) {
-        notify("Vui lòng đăng nhập Google trước để lưu kiến thức.");
-        return;
-      }
       const title = document.getElementById("dhpBrainNewTitle").value.trim();
       const sourceUrl = document.getElementById("dhpBrainNewUrl").value.trim();
       const summary = document.getElementById("dhpBrainNewContent").value.trim();
@@ -226,7 +294,7 @@ window.SecondBrainManager = (function () {
         const res = await fetch("/api/brain", {
           method: "POST",
           credentials: "include",
-          headers: { "Content-Type": "application/json", "X-Session-Id": sid },
+          headers: buildAuthHeaders({ "Content-Type": "application/json" }),
           body: JSON.stringify({ title, sourceUrl, summary, tags })
         });
         const data = await res.json();
