@@ -4,7 +4,7 @@
       <span class="modal-badge">PERSONAL KNOWLEDGE BASE</span>
       <h2 class="sb-tab-title">🧠 Second Brain — Bộ Não Thứ 2</h2>
       <p class="sb-tab-sub">
-        Lưu trữ các bài viết hay, tóm tắt video YouTube/Facebook và kiến thức riêng để AI học và trả lời lại khi cần.
+        Quăng link YouTube/Facebook, bài viết hay ghi chú để AI tự tóm tắt & lưu riêng theo tài khoản Google của bạn.
       </p>
     </div>
     <div class="sb-account-pill" id="sbAccountStatus">Đang kiểm tra tài khoản...</div>
@@ -13,8 +13,30 @@
   <div class="sb-grid">
     <!-- CỘT TRÁI: NẠP & QUẢN LÝ TRI THỨC -->
     <div class="card sb-panel">
-      <h3 class="sb-panel-title">1. Nạp kiến thức mới (Training)</h3>
-      <div class="dhp-brain-add-box">
+      <div class="sb-ingest-head">
+        <h3 class="sb-panel-title">1. Nạp kiến thức mới (Training)</h3>
+        <div class="sb-mode-switch" role="tablist">
+          <button type="button" class="sb-mode-btn active" data-ingest-mode="quick">⚡ Chat / Quăng link</button>
+          <button type="button" class="sb-mode-btn" data-ingest-mode="manual">📝 Form chi tiết</button>
+        </div>
+      </div>
+
+      <!-- CHẾ ĐỘ 1: CHAT / QUĂNG LINK NHANH CHO AI TỰ NẠP -->
+      <form id="sbQuickIngestForm" class="dhp-brain-add-box">
+        <textarea
+          id="sbQuickIngestInput"
+          class="dhp-brain-textarea"
+          style="min-height:92px;"
+          placeholder="Dán thẳng link YouTube/Facebook, đoạn bài viết hay, hoặc ghi chú cần AI học... (VD: https://youtu.be/... video này nói về cách tối ưu quảng cáo)"
+        ></textarea>
+        <div class="sb-add-footer" style="justify-content:space-between;">
+          <span style="font-size:0.78rem;color:#64748b;">AI tự bóc tiêu đề, tóm tắt ý chính & gắn từ khóa.</span>
+          <button type="submit" id="sbQuickIngestBtn" class="btn btn-primary btn-sm">⚡ Gửi AI nạp ngay</button>
+        </div>
+      </form>
+
+      <!-- CHẾ ĐỘ 2: FORM NHẬP THỦ CÔNG CHI TIẾT -->
+      <div id="sbManualIngestBox" class="dhp-brain-add-box hidden">
         <input type="text" id="dhpBrainNewTitle" class="dhp-brain-input" placeholder="Tiêu đề ngắn gọn (VD: Cách viết hook video bán gạo)" />
         <input type="url" id="dhpBrainNewUrl" class="dhp-brain-input" placeholder="Link YouTube / Facebook / Bài viết (tùy chọn)" />
         <textarea id="dhpBrainNewContent" class="dhp-brain-textarea" placeholder="Dán nội dung bài viết, ý chính video hoặc kiến thức muốn dạy cho AI..."></textarea>
@@ -36,7 +58,7 @@
       <div class="sb-chat-head">
         <div>
           <h3 class="sb-panel-title" style="margin:0;">2. Hỏi đáp từ Bộ Não Thứ 2</h3>
-          <p class="sb-chat-hint">AI chỉ truy xuất dữ liệu từ kho kiến thức bạn đã lưu bên trái.</p>
+          <p class="sb-chat-hint">Hỏi lại bất cứ kiến thức, video hay bài viết nào bạn đã nạp bên trái.</p>
         </div>
         <button type="button" id="sbClearChatBtn" class="btn btn-outline btn-sm">Làm mới chat</button>
       </div>
@@ -44,7 +66,7 @@
       <div id="sbChatMessages" class="chat-messages sb-chat-box">
         <div class="chat-row bot">
           <span class="chat-sender">Second Brain AI</span>
-          <div class="chat-bubble bot">Chào bạn! Hãy nhập kiến thức ở cột bên trái (hoặc nhắn "Ghi nhớ: ..." ngay tại đây), sau đó hỏi tôi bất cứ điều gì liên quan đến những nội dung bạn đã lưu.</div>
+          <div class="chat-bubble bot">Chào bạn! Bạn có thể quăng link hoặc nội dung ở khung bên trái để tôi học, sau đó hỏi tôi bất kỳ điều gì từ kho tri thức của bạn tại đây.</div>
         </div>
       </div>
 
