@@ -53,7 +53,6 @@
         </select>
       </div>
       <div class="ai-history-right">
-        <button type="button" id="dhpOpenBrainBtn" class="dhp-brain-btn" title="Xem & nạp tri thức vào Bộ não thứ 2">🧠 Bộ não thứ 2</button>
         <span class="ai-sync-tag ${isCloudMode ? "cloud" : ""}">
           ${isCloudMode ? "☁️ Đồng bộ Google" : "💾 Lưu trên máy"}
         </span>
