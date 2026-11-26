@@ -53,12 +53,17 @@
         </select>
       </div>
       <div class="ai-history-right">
+        <button type="button" id="dhpOpenBrainBtn" class="dhp-brain-btn" title="Xem & nạp tri thức vào Bộ não thứ 2">🧠 Bộ não thứ 2</button>
         <span class="ai-sync-tag ${isCloudMode ? "cloud" : ""}">
           ${isCloudMode ? "☁️ Đồng bộ Google" : "💾 Lưu trên máy"}
         </span>
         <button type="button" id="aiDeleteChatBtn" class="btn btn-outline btn-sm" title="Xóa đoạn chat hiện tại">Xóa</button>
       </div>
     `;
+
+    if (window.SecondBrainManager?.fetchBrainList) {
+      window.SecondBrainManager.fetchBrainList();
+    }
   }
 
   function renderCurrentThread() {
@@ -70,7 +75,10 @@
     messagesBox.innerHTML = "";
 
     activeThread.messages.forEach((msg) => {
-      renderBubbleOnly(messagesBox, msg.role, msg.text, msg.schedule, { autoSyncCalendar: false });
+      renderBubbleOnly(messagesBox, msg.role, msg.text, msg.schedule, {
+        autoSyncCalendar: false,
+        savedMemory: msg.savedMemory || null
+      });
     });
     messagesBox.scrollTop = messagesBox.scrollHeight;
   }
@@ -88,7 +96,13 @@
     return { ok: false, message: "Chưa sẵn sàng" };
   }
 
-  async function renderBubbleOnly(messagesBox, role, text, schedule = null, { autoSyncCalendar = true } = {}) {
+  async function renderBubbleOnly(
+    messagesBox,
+    role,
+    text,
+    schedule = null,
+    { autoSyncCalendar = true, savedMemory = null } = {}
+  ) {
     if (!messagesBox) return;
 
     const isUser = role === "user";
@@ -100,6 +114,15 @@
       <span class="chat-sender">${senderLabel}</span>
       <div class="chat-bubble ${isUser ? "user" : "bot"}">${escapeHtml(text)}</div>
     `;
+
+    if (savedMemory && savedMemory.title) {
+      html += `
+        <div class="dhp-brain-saved-pill">
+          <span>🧠 Đã lưu vào Bộ não thứ 2: <strong>${escapeHtml(savedMemory.title)}</strong></span>
+          <button type="button" class="btn btn-outline btn-sm" id="dhpOpenBrainBtn">Xem kho</button>
+        </div>
+      `;
+    }
 
     const hasSchedule = Boolean(schedule && (schedule.title || schedule.targetTitle));
     if (hasSchedule) {
@@ -182,10 +205,15 @@
     try {
       const now = new Date();
       const todayIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+      const sid = localStorage.getItem("dhp_gcal_sid") || "";
+
+      const headers = { "Content-Type": "application/json" };
+      if (sid) headers["X-Session-Id"] = sid;
 
       const res = await fetch("/api/chat", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        headers,
         body: JSON.stringify({
           message,
           today: todayIso,
@@ -197,12 +225,20 @@
       const data = await res.json();
       const replyText = data.reply || "Xin lỗi, trợ lý AI chưa thể phản hồi lúc này.";
       const scheduleObj = data.schedule || null;
+      const savedMemory = data.savedMemory || null;
 
       if (History) {
         History.appendMessageToActive("bot", replyText, scheduleObj);
         ensureHistoryToolbar();
       }
-      await renderBubbleOnly(messagesBox, "bot", replyText, scheduleObj, { autoSyncCalendar: true });
+      if (savedMemory && window.SecondBrainManager?.fetchBrainList) {
+        window.SecondBrainManager.fetchBrainList();
+      }
+
+      await renderBubbleOnly(messagesBox, "bot", replyText, scheduleObj, {
+        autoSyncCalendar: true,
+        savedMemory
+      });
     } catch {
       const errText = "Không thể kết nối tới máy chủ AI. Bạn thử lại nhé!";
       if (History) History.appendMessageToActive("bot", errText, null);
