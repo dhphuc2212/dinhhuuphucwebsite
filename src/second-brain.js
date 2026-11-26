@@ -1,21 +1,23 @@
-import { jsonRes } from "./utils.js";
+import { jsonRes, parseCookies } from "./utils.js";
+
+const COOKIE_NAME = "dhp_gcal_sid";
 
 function getSessionId(request) {
-  const headerSid = request.headers.get("X-Session-Id");
-  if (headerSid) return headerSid.trim();
+  const cookies = parseCookies(request.headers.get("Cookie") || "");
+  if (cookies[COOKIE_NAME]) return cookies[COOKIE_NAME].trim();
 
-  const cookie = request.headers.get("Cookie") || "";
-  const match = cookie.match(/(?:^|;\s*)dhp_gcal_sid=([^;]+)/);
-  return match ? decodeURIComponent(match[1]) : "";
+  const headerSid = request.headers.get("X-Session-Id");
+  return headerSid ? headerSid.trim() : "";
 }
 
 export async function resolveBrainUserEmail(request, env) {
   const sid = getSessionId(request);
   if (!sid || !env.AUTH_SESSIONS) return "";
   try {
-    const raw = await env.AUTH_SESSIONS.get(`gcal_session:${sid}`);
+    const raw = await env.AUTH_SESSIONS.get(`sess:${sid}`);
     if (!raw) return "";
     const sess = JSON.parse(raw);
+    if (sess.expiresAtMs && Date.now() > sess.expiresAtMs) return "";
     return (sess.email || "").toLowerCase().trim();
   } catch {
     return "";
@@ -43,7 +45,6 @@ function tokenize(str = "") {
 async function fetchUrlMetadata(rawUrl) {
   if (!rawUrl || !/^https?:\/\//i.test(rawUrl)) return null;
   try {
-    // Ưu tiên YouTube oEmbed để lấy chính xác tên video & kênh
     if (/youtube\.com|youtu\.be/i.test(rawUrl)) {
       const oembed = `https://www.youtube.com/oembed?url=${encodeURIComponent(rawUrl)}&format=json`;
       const res = await fetch(oembed, { cf: { cacheTtl: 3600 } });
@@ -56,7 +57,6 @@ async function fetchUrlMetadata(rawUrl) {
       }
     }
 
-    // Với bài viết/blog công khai: đọc nhanh thẻ <title> và meta description
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 3500);
     const res = await fetch(rawUrl, {
@@ -130,10 +130,8 @@ export async function saveMemoryEntry(email, payload, env) {
     createdAt
   };
 
-  // Tầng 2: Lưu chi tiết từng bản ghi riêng
   await env.AUTH_SESSIONS.put(`brain_item:${email}:${id}`, JSON.stringify(fullItem));
 
-  // Tầng 1: Cập nhật chỉ mục nhẹ (chỉ lưu tiêu đề + từ khóa để quét siêu nhanh)
   const indexList = await getBrainIndex(email, env);
   const indexEntry = {
     id,
@@ -155,9 +153,7 @@ export async function searchRelevantMemories(email, query, env, limit = 5) {
 
   const qNorm = normalizeText(query);
   const qTokens = tokenize(query);
-
-  // Nếu người dùng hỏi tổng quát ("tôi đã lưu gì", "những kiến thức đã dạy") -> lấy các mục mới nhất
-  const isGeneralRecall = /da luu|da day|bo nao|ghi nho gi|tat ca|danh sach|hom truoc/i.test(qNorm) && qTokens.length <= 3;
+  const isGeneralRecall = /da luu|da day|bo nao|ghi nho gi|tat ca|danh sach|hom truoc|nhung gi/i.test(qNorm) && qTokens.length <= 3;
 
   const scored = indexList.map((item, idx) => {
     const hay = normalizeText(`${item.title} ${(item.tags || []).join(" ")} ${item.preview || ""}`);
@@ -167,7 +163,6 @@ export async function searchRelevantMemories(email, query, env, limit = 5) {
     for (const tk of qTokens) {
       if (hay.includes(tk)) score += 3;
     }
-    // Ưu tiên nhẹ các kiến thức mới lưu gần đây
     if (isGeneralRecall) score += Math.max(1, 6 - idx);
     return { item, score };
   });
@@ -179,7 +174,6 @@ export async function searchRelevantMemories(email, query, env, limit = 5) {
 
   if (topMatches.length === 0) return [];
 
-  // Chỉ mở đúng các bản ghi chi tiết khớp nhất ở Tầng 2
   const detailed = await Promise.all(
     topMatches.map(async ({ item }) => {
       try {
@@ -213,13 +207,11 @@ export async function handleSecondBrainRoutes(pathname, request, env) {
     return jsonRes({ authenticated: false, items: [], error: "Vui lòng đăng nhập Google để dùng Bộ não thứ 2." }, 200);
   }
 
-  // GET /api/brain -> lấy danh sách chỉ mục
   if (pathname === "/api/brain" && request.method === "GET") {
     const items = await getBrainIndex(email, env);
     return jsonRes({ authenticated: true, email, count: items.length, items });
   }
 
-  // GET /api/brain/item/:id -> xem nội dung đầy đủ 1 ghi nhớ
   const itemMatch = pathname.match(/^\/api\/brain\/item\/([^/]+)$/);
   if (itemMatch && request.method === "GET") {
     const id = decodeURIComponent(itemMatch[1]);
@@ -228,7 +220,6 @@ export async function handleSecondBrainRoutes(pathname, request, env) {
     return jsonRes({ ok: true, item: JSON.parse(raw) });
   }
 
-  // POST /api/brain -> thêm ghi nhớ thủ công từ giao diện
   if (pathname === "/api/brain" && request.method === "POST") {
     try {
       const body = await request.json();
@@ -243,7 +234,6 @@ export async function handleSecondBrainRoutes(pathname, request, env) {
     }
   }
 
-  // DELETE /api/brain/item/:id -> xóa 1 ghi nhớ
   if (itemMatch && request.method === "DELETE") {
     const id = decodeURIComponent(itemMatch[1]);
     await env.AUTH_SESSIONS.delete(`brain_item:${email}:${id}`);
