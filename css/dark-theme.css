@@ -1,0 +1,124 @@
+/* =========================================================
+   DHP DARK THEME — DEVELOPER / TECH FOUNDER EDITION
+   Inspired by Linear, Vercel & Raycast (Zinc Layered UI)
+   ========================================================= */
+
+:root {
+  --bg-page: #09090b;
+  --bg-surface: #111114;
+  --bg-elevated: #18181b;
+  --bg-subtle: #1f1f23;
+  --border-color: #27272a;
+  --border-hover: #3f3f46;
+  --text-primary: #fafafa;
+  --text-secondary: #a1a1aa;
+  --text-muted: #71717a;
+  --accent: #10b981;
+  --accent-dark: #059669;
+  --accent-soft: rgba(16, 185, 129, 0.12);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.45), 0 8px 24px rgba(0, 0, 0, 0.35);
+  --shadow-md: 0 12px 32px rgba(0, 0, 0, 0.55);
+}
+
+html,
+body {
+  background-color: #09090b !important;
+  color: #fafafa !important;
+  color-scheme: dark;
+}
+
+/* Nền lưới chấm kỹ thuật tinh tế kiểu Vercel/Linear */
+.ambient-bg {
+  background-color: #09090b !important;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.065) 1px, transparent 1px) !important;
+  background-size: 22px 22px !important;
+  opacity: 1 !important;
+}
+
+.scroll-progress {
+  background: linear-gradient(90deg, #10b981, #38bdf8) !important;
+}
+
+/* HEADER & NAVIGATION */
+.site-header {
+  background: rgba(9, 9, 11, 0.82) !important;
+  backdrop-filter: blur(14px) saturate(160%) !important;
+  -webkit-backdrop-filter: blur(14px) saturate(160%) !important;
+  border-bottom: 1px solid #27272a !important;
+}
+
+.brand-mark {
+  background: #fafafa !important;
+  color: #09090b !important;
+  font-family: "JetBrains Mono", monospace !important;
+  font-weight: 700 !important;
+}
+
+.brand-name {
+  color: #fafafa !important;
+}
+
+.brand-dot {
+  color: #10b981 !important;
+}
+
+.main-nav {
+  background: #111114 !important;
+  border: 1px solid #27272a !important;
+  padding: 4px !important;
+  border-radius: 12px !important;
+}
+
+.nav-btn {
+  color: #a1a1aa !important;
+  background: transparent !important;
+}
+
+.nav-btn:hover {
+  color: #fafafa !important;
+  background: rgba(255, 255, 255, 0.04) !important;
+}
+
+.nav-btn.active {
+  background: #1f1f23 !important;
+  color: #fafafa !important;
+  border: 1px solid #3f3f46 !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4) !important;
+}
+
+.nav-num {
+  font-family: "JetBrains Mono", monospace !important;
+  color: #10b981 !important;
+}
+
+/* CÁC THẺ NỘI DUNG CHÍNH (CARDS) */
+.card,
+.profile-card,
+.intro-card,
+.ai-hub-card,
+.calendar-section-card,
+.work-hero-card,
+.work-video-card,
+.pricing-card,
+.sb-panel,
+.modal-card,
+.game-card,
+.minigame-card {
+  background: #111114 !important;
+  border: 1px solid #27272a !important;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 12px 30px rgba(0, 0, 0, 0.45) !important;
+  color: #fafafa !important;
+}
+
+.hover-card:hover {
+  border-color: #3f3f46 !important;
+}
+
+/* PROFILE CARD & COVER */
+.profile-cover {
+  background: linear-gradient(135deg, #13161f 0%, #0f1f1c 55%, #18181b 100%) !important;
+  border-bottom: 1px solid #27272a !important;
+}
+
+.status-pill {
+  background: rgba(17, 17, 20, 0.88) !important;
