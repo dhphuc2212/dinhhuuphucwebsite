@@ -837,3 +837,56 @@ body {
   height: 100%;
   border: 0;
 }
+/* Fix giao diện Mobile (Thanh menu 4 tab + Avatar DHP) */
+@media (max-width: 768px) {
+  .site-header .header-inner {
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 10px;
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+
+  .site-header .brand-logo {
+    order: 1;
+  }
+
+  .site-header .header-actions {
+    order: 2;
+    width: 100%;
+    justify-content: flex-start;
+    gap: 8px;
+  }
+
+  .site-header .main-nav {
+    order: 3;
+    width: 100%;
+    display: flex;
+    justify-content: flex-start;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding: 4px;
+    gap: 6px;
+  }
+
+  .site-header .main-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .site-header .nav-btn {
+    flex: 0 0 auto;
+    padding: 6px 11px;
+    font-size: 0.82rem;
+  }
+}
+
+/* Đưa khối Avatar DHP nổi lên trên lớp nền banner ở mọi màn hình */
+.profile-avatar,
+.avatar-box,
+.profile-card [class*="avatar"],
+.hero-card [class*="avatar"] {
+  position: relative;
+  z-index: 5;
+}
